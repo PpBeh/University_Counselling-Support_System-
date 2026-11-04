@@ -6,7 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.example.counselling.core.ErrorMapper
+import com.example.counselling.core.AppConstants
 import com.example.counselling.core.MessageKind
 import com.example.counselling.core.SessionManager
 import com.example.counselling.core.UiMessage
@@ -44,6 +44,7 @@ data class BookAppointmentUiState(
 class BookAppointmentViewModel(
     private val repository: AppointmentRepository,
     sessionManager: SessionManager,
+    initialConcern: String?,
 ) : ViewModel() {
 
     private val preferredMode = sessionManager.currentProfile?.preferredSessionMode
@@ -55,6 +56,15 @@ class BookAppointmentViewModel(
 
     private val _messages = Channel<UiMessage>(Channel.BUFFERED)
     val messages = _messages.receiveAsFlow()
+
+    init {
+        if (initialConcern != null && initialConcern in AppConstants.concernCategories) {
+            _uiState.update {
+                it.copy(concern = initialConcern, step = BookingStep.MATCHES)
+            }
+            loadMatches()
+        }
+    }
 
     fun chooseConcern(concern: String) {
         _uiState.update {
@@ -189,8 +199,11 @@ class BookAppointmentViewModel(
         fun factory(
             repository: AppointmentRepository,
             sessionManager: SessionManager,
+            initialConcern: String?,
         ) = viewModelFactory {
-            initializer { BookAppointmentViewModel(repository, sessionManager) }
+            initializer {
+                BookAppointmentViewModel(repository, sessionManager, initialConcern)
+            }
         }
     }
 }

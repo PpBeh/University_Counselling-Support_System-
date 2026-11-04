@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,6 +25,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -65,6 +67,8 @@ fun StudentAppointmentsRoute(
     repository: AppointmentRepository,
     onBook: () -> Unit,
     onReschedule: (String) -> Unit,
+    onOpenSummaries: () -> Unit,
+    onOpenFeedback: () -> Unit,
 ) {
     val viewModel: AppointmentsViewModel = viewModel(
         factory = AppointmentsViewModel.factory(repository),
@@ -86,6 +90,8 @@ fun StudentAppointmentsRoute(
         snackbarHostState = snackbarState,
         onBook = onBook,
         onReschedule = onReschedule,
+        onOpenSummaries = onOpenSummaries,
+        onOpenFeedback = onOpenFeedback,
         onCancel = viewModel::cancelAppointment,
         onRefresh = viewModel::refresh,
         onRetry = viewModel::retry,
@@ -99,6 +105,8 @@ private fun StudentAppointmentsScreen(
     snackbarHostState: SnackbarHostState,
     onBook: () -> Unit,
     onReschedule: (String) -> Unit,
+    onOpenSummaries: () -> Unit,
+    onOpenFeedback: () -> Unit,
     onCancel: (String) -> Unit,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
@@ -184,6 +192,22 @@ private fun StudentAppointmentsScreen(
                 onSelect = { selectedStatusLabel = it },
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
             )
+
+            if (selectedTab == StudentAppointmentTab.PAST) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(onClick = onOpenSummaries) {
+                        Text("Session summaries")
+                    }
+                    TextButton(onClick = onOpenFeedback) {
+                        Text("Session feedback")
+                    }
+                }
+            }
 
             when {
                 state.isLoading -> LoadingShimmer(

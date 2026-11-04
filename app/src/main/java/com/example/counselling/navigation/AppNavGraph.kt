@@ -7,13 +7,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.Forum
-import androidx.compose.material.icons.outlined.Groups
-import androidx.compose.material.icons.outlined.MenuBook
-import androidx.compose.material.icons.outlined.Psychology
-import androidx.compose.material.icons.outlined.SupportAgent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -52,14 +45,33 @@ import com.example.counselling.feature.auth.ui.ConfigurationErrorScreen
 import com.example.counselling.feature.auth.ui.LoginRoute
 import com.example.counselling.feature.auth.ui.RegisterRoute
 import com.example.counselling.feature.auth.ui.SplashScreen
+import com.example.counselling.feature.counsellor.data.CounsellorRepository
+import com.example.counselling.feature.counsellor.ui.CounsellorAvailabilityRoute
+import com.example.counselling.feature.counsellor.ui.CounsellorDetailRoute
+import com.example.counselling.feature.counsellor.ui.CounsellorFormRoute
+import com.example.counselling.feature.counsellor.ui.CounsellorListRoute
+import com.example.counselling.feature.enquiry.data.EnquiryRepository
+import com.example.counselling.feature.enquiry.data.FeedbackRepository
+import com.example.counselling.feature.enquiry.ui.CounsellorFeedbackRoute
+import com.example.counselling.feature.enquiry.ui.CounsellorInboxRoute
+import com.example.counselling.feature.enquiry.ui.StudentEnquiriesRoute
+import com.example.counselling.feature.enquiry.ui.StudentFeedbackRoute
 import com.example.counselling.feature.home.ui.HomeRoute
+import com.example.counselling.feature.records.data.SessionRecordRepository
+import com.example.counselling.feature.records.ui.FollowUpRoute
+import com.example.counselling.feature.records.ui.SessionRecordFormRoute
+import com.example.counselling.feature.records.ui.SessionRecordsRoute
+import com.example.counselling.feature.records.ui.StudentSummariesRoute
+import com.example.counselling.feature.resource.data.ResourceRepository
+import com.example.counselling.feature.resource.ui.ResourceFormRoute
+import com.example.counselling.feature.resource.ui.ResourcesRoute
+import com.example.counselling.feature.resource.ui.SelfCheckRoute
 import com.example.counselling.feature.student.data.ProfileRepository
 import com.example.counselling.feature.student.model.Profile
 import com.example.counselling.feature.student.ui.ProfileRoute
 import com.example.counselling.feature.student.ui.StudentDetailRoute
 import com.example.counselling.feature.student.ui.StudentListRoute
 import com.example.counselling.ui.components.AppSnackbarHost
-import com.example.counselling.ui.components.ModulePlaceholderScreen
 import com.example.counselling.ui.components.showAppMessage
 import kotlinx.coroutines.launch
 
@@ -75,12 +87,22 @@ fun AppRoot(container: AppContainer) {
     val authRepository = container.authRepository
     val profileRepository = container.profileRepository
     val appointmentRepository = container.appointmentRepository
+    val counsellorRepository = container.counsellorRepository
+    val recordRepository = container.recordRepository
+    val resourceRepository = container.resourceRepository
+    val enquiryRepository = container.enquiryRepository
+    val feedbackRepository = container.feedbackRepository
 
     if (
         sessionManager == null ||
         authRepository == null ||
         profileRepository == null ||
-        appointmentRepository == null
+        appointmentRepository == null ||
+        counsellorRepository == null ||
+        recordRepository == null ||
+        resourceRepository == null ||
+        enquiryRepository == null ||
+        feedbackRepository == null
     ) {
         ConfigurationErrorScreen(
             message = "The services could not be initialised. Check local.properties and rebuild.",
@@ -106,6 +128,11 @@ fun AppRoot(container: AppContainer) {
             authRepository = authRepository,
             profileRepository = profileRepository,
             appointmentRepository = appointmentRepository,
+            counsellorRepository = counsellorRepository,
+            recordRepository = recordRepository,
+            resourceRepository = resourceRepository,
+            enquiryRepository = enquiryRepository,
+            feedbackRepository = feedbackRepository,
         )
     }
 }
@@ -156,6 +183,11 @@ private fun MainApp(
     authRepository: AuthRepository,
     profileRepository: ProfileRepository,
     appointmentRepository: AppointmentRepository,
+    counsellorRepository: CounsellorRepository,
+    recordRepository: SessionRecordRepository,
+    resourceRepository: ResourceRepository,
+    enquiryRepository: EnquiryRepository,
+    feedbackRepository: FeedbackRepository,
 ) {
     val role = profile.userRole ?: UserRole.STUDENT
     val destinations = remember(role) { destinationsFor(role) }
@@ -217,7 +249,8 @@ private fun MainApp(
             composable(Routes.HOME) {
                 HomeRoute(
                     profile = profile,
-                    repository = appointmentRepository,
+                    appointmentRepository = appointmentRepository,
+                    recordRepository = recordRepository,
                     onNavigate = { route -> navController.navigateOnce(route) },
                 )
             }
@@ -225,17 +258,33 @@ private fun MainApp(
             composable(Routes.STUDENT_APPOINTMENTS) {
                 StudentAppointmentsRoute(
                     repository = appointmentRepository,
-                    onBook = { navController.navigateOnce(Routes.BOOK_APPOINTMENT) },
+                    onBook = { navController.navigateOnce(Routes.bookAppointment()) },
                     onReschedule = { id ->
                         navController.navigateOnce(Routes.reschedule(id))
+                    },
+                    onOpenSummaries = {
+                        navController.navigateOnce(Routes.STUDENT_SUMMARIES)
+                    },
+                    onOpenFeedback = {
+                        navController.navigateOnce(Routes.STUDENT_FEEDBACK)
                     },
                 )
             }
 
-            composable(Routes.BOOK_APPOINTMENT) {
+            composable(
+                route = Routes.BOOK_APPOINTMENT,
+                arguments = listOf(
+                    navArgument("concern") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { entry ->
                 BookAppointmentRoute(
                     repository = appointmentRepository,
                     sessionManager = sessionManager,
+                    initialConcern = entry.arguments?.getString("concern"),
                     onClose = { navController.popBackStack() },
                 )
             }
@@ -253,56 +302,108 @@ private fun MainApp(
             }
 
             composable(Routes.ENQUIRIES) {
-                val isCounsellor = role == UserRole.COUNSELLOR
-                ModulePlaceholderScreen(
-                    title = if (isCounsellor) "Counselling inbox" else "Enquiries",
-                    moduleLabel = "Module 6",
-                    owner = "Michael",
-                    description = if (isCounsellor) {
-                        "Anonymous and linked enquiries, replies and recommended resources will be managed here."
-                    } else {
-                        "Ask a question privately, check a reply by reference code and rate completed sessions here."
-                    },
-                    icon = Icons.Outlined.Forum,
-                )
+                if (role == UserRole.COUNSELLOR) {
+                    CounsellorInboxRoute(
+                        enquiryRepository = enquiryRepository,
+                        resourceRepository = resourceRepository,
+                        onOpenFeedback = {
+                            navController.navigateOnce(Routes.COUNSELLOR_FEEDBACK)
+                        },
+                    )
+                } else {
+                    StudentEnquiriesRoute(
+                        repository = enquiryRepository,
+                        onOpenFeedback = {
+                            navController.navigateOnce(Routes.STUDENT_FEEDBACK)
+                        },
+                    )
+                }
             }
 
             composable(Routes.RESOURCES) {
-                val isAdmin = role == UserRole.ADMIN
-                ModulePlaceholderScreen(
-                    title = "Resources",
-                    moduleLabel = "Module 5",
-                    owner = "Michael",
-                    description = if (isAdmin) {
-                        "Create, publish and remove self-help resources, and review the library."
-                    } else {
-                        "Browse practical self-help articles, videos, audio and urgent support contacts."
+                ResourcesRoute(
+                    role = role,
+                    repository = resourceRepository,
+                    onAdd = { navController.navigateOnce(Routes.resourceForm()) },
+                    onEdit = { id -> navController.navigateOnce(Routes.resourceForm(id)) },
+                )
+            }
+
+            composable(
+                route = Routes.RESOURCE_FORM,
+                arguments = listOf(
+                    navArgument("resourceId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
                     },
-                    icon = Icons.Outlined.MenuBook,
+                ),
+            ) { entry ->
+                ResourceFormRoute(
+                    resourceId = entry.arguments?.getString("resourceId"),
+                    repository = resourceRepository,
+                    onBack = { navController.popBackStack() },
+                    onSaved = { navController.popBackStack() },
+                )
+            }
+
+            composable(Routes.SELF_CHECK) {
+                SelfCheckRoute(
+                    repository = resourceRepository,
+                    onBack = { navController.popBackStack() },
+                    onBook = { concern ->
+                        navController.navigateOnce(Routes.bookAppointment(concern))
+                    },
+                )
+            }
+
+            composable(Routes.RESOURCES_HOTLINE) {
+                ResourcesRoute(
+                    role = role,
+                    repository = resourceRepository,
+                    hotlineOnly = true,
+                    onBack = { navController.popBackStack() },
+                    onAdd = { navController.navigateOnce(Routes.resourceForm()) },
+                    onEdit = { id -> navController.navigateOnce(Routes.resourceForm(id)) },
                 )
             }
 
             composable(Routes.COUNSELLOR_SCHEDULE) {
-                CounsellorScheduleRoute(repository = appointmentRepository)
+                CounsellorScheduleRoute(
+                    repository = appointmentRepository,
+                    onManageAvailability = {
+                        navController.navigateOnce(Routes.MY_AVAILABILITY)
+                    },
+                )
             }
 
             composable(Routes.COUNSELLOR_RECORDS) {
-                ModulePlaceholderScreen(
-                    title = "Session records",
-                    moduleLabel = "Module 4",
-                    owner = "Jeremy",
-                    description = "Private notes, public summaries, risk levels and the urgency triage follow-up board will appear here.",
-                    icon = Icons.Outlined.Description,
+                SessionRecordsRoute(
+                    repository = recordRepository,
+                    appointmentRepository = appointmentRepository,
+                    onAddRecord = { appointmentId ->
+                        navController.navigateOnce(
+                            Routes.sessionRecordForm(appointmentId = appointmentId),
+                        )
+                    },
+                    onEditRecord = { recordId ->
+                        navController.navigateOnce(
+                            Routes.sessionRecordForm(recordId = recordId),
+                        )
+                    },
+                    onScheduleFollowUp = { recordId ->
+                        navController.navigateOnce(Routes.followUp(recordId))
+                    },
                 )
             }
 
             composable(Routes.ADMIN_COUNSELLORS) {
-                ModulePlaceholderScreen(
-                    title = "Counsellors",
-                    moduleLabel = "Module 3",
-                    owner = "Jeremy",
-                    description = "Add counsellors, manage their availability and remove or deactivate directory entries here.",
-                    icon = Icons.Outlined.Groups,
+                CounsellorListRoute(
+                    repository = counsellorRepository,
+                    onAdd = { navController.navigateOnce(Routes.counsellorForm()) },
+                    onOpen = { id ->
+                        navController.navigateOnce(Routes.counsellorDetail(id))
+                    },
                 )
             }
 
@@ -338,6 +439,124 @@ private fun MainApp(
                 )
             }
 
+            composable(
+                route = Routes.COUNSELLOR_DETAIL,
+                arguments = listOf(navArgument("counsellorId") { type = NavType.StringType }),
+            ) { entry ->
+                val counsellorId = entry.arguments?.getString("counsellorId").orEmpty()
+                CounsellorDetailRoute(
+                    counsellorId = counsellorId,
+                    repository = counsellorRepository,
+                    onBack = { navController.popBackStack() },
+                    onEdit = { id ->
+                        navController.navigateOnce(Routes.counsellorForm(id))
+                    },
+                    onManageAvailability = { id ->
+                        navController.navigateOnce(Routes.counsellorAvailability(id))
+                    },
+                    onRemoved = { navController.popBackStack() },
+                )
+            }
+
+            composable(
+                route = Routes.COUNSELLOR_FORM,
+                arguments = listOf(
+                    navArgument("counsellorId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { entry ->
+                val counsellorId = entry.arguments?.getString("counsellorId")
+                CounsellorFormRoute(
+                    counsellorId = counsellorId,
+                    repository = counsellorRepository,
+                    onBack = { navController.popBackStack() },
+                    onSaved = { navController.popBackStack() },
+                )
+            }
+
+            composable(
+                route = Routes.COUNSELLOR_AVAILABILITY,
+                arguments = listOf(navArgument("counsellorId") { type = NavType.StringType }),
+            ) { entry ->
+                val counsellorId = entry.arguments?.getString("counsellorId")
+                CounsellorAvailabilityRoute(
+                    counsellorId = counsellorId,
+                    currentUserId = profile.id,
+                    repository = counsellorRepository,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(Routes.MY_AVAILABILITY) {
+                CounsellorAvailabilityRoute(
+                    counsellorId = null,
+                    currentUserId = profile.id,
+                    repository = counsellorRepository,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(
+                route = Routes.SESSION_RECORD_FORM,
+                arguments = listOf(
+                    navArgument("recordId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("appointmentId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { entry ->
+                SessionRecordFormRoute(
+                    recordId = entry.arguments?.getString("recordId"),
+                    appointmentId = entry.arguments?.getString("appointmentId"),
+                    recordRepository = recordRepository,
+                    appointmentRepository = appointmentRepository,
+                    onBack = { navController.popBackStack() },
+                    onSaved = { navController.popBackStack() },
+                )
+            }
+
+            composable(
+                route = Routes.FOLLOW_UP,
+                arguments = listOf(navArgument("recordId") { type = NavType.StringType }),
+            ) { entry ->
+                FollowUpRoute(
+                    recordId = entry.arguments?.getString("recordId").orEmpty(),
+                    repository = recordRepository,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(Routes.STUDENT_SUMMARIES) {
+                StudentSummariesRoute(
+                    repository = recordRepository,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(Routes.STUDENT_FEEDBACK) {
+                StudentFeedbackRoute(
+                    feedbackRepository = feedbackRepository,
+                    appointmentRepository = appointmentRepository,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(Routes.COUNSELLOR_FEEDBACK) {
+                CounsellorFeedbackRoute(
+                    repository = feedbackRepository,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
             composable(Routes.PROFILE) {
                 ProfileRoute(
                     sessionManager = sessionManager,
@@ -347,28 +566,6 @@ private fun MainApp(
                     onSignOut = {
                         scope.launch { sessionManager.signOut() }
                     },
-                )
-            }
-
-            composable(Routes.SELF_CHECK) {
-                ModulePlaceholderScreen(
-                    title = "Wellbeing check-in",
-                    moduleLabel = "Module 5",
-                    owner = "Michael",
-                    description = "The private 10-question self-check, score bracket and matched resources will appear here. It is a screening aid, not a diagnosis.",
-                    icon = Icons.Outlined.Psychology,
-                    onBack = { navController.popBackStack() },
-                )
-            }
-
-            composable(Routes.RESOURCES_HOTLINE) {
-                ModulePlaceholderScreen(
-                    title = "Urgent support",
-                    moduleLabel = "Module 5",
-                    owner = "Michael",
-                    description = "Published hotline resources for urgent moments will be shown here. If you are in immediate danger, contact campus security or local emergency services.",
-                    icon = Icons.Outlined.SupportAgent,
-                    onBack = { navController.popBackStack() },
                 )
             }
 

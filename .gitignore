@@ -1,6 +1,9 @@
 *.iml
 .gradle
-/local.properties
+# Machine-specific Android SDK path and local overrides. Not shared.
+local.properties
+# Shared publishable client configuration IS tracked and should be shared:
+!supabase.properties
 /.idea/caches
 /.idea/libraries
 /.idea/modules.xml
@@ -14,4 +17,3 @@
 /captures
 .externalNativeBuild
 .cxx
-local.properties

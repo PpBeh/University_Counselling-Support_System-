@@ -38,6 +38,8 @@ object DateTimeUtils {
         return runCatching {
             OffsetDateTime.parse(value).atZoneSameInstant(kualaLumpur)
         }.recoverCatching {
+            ZonedDateTime.parse(value).withZoneSameInstant(kualaLumpur)
+        }.recoverCatching {
             Instant.parse(value).atZone(kualaLumpur)
         }.getOrNull()
     }
@@ -69,6 +71,23 @@ object DateTimeUtils {
         val now = nowInKualaLumpur()
         return target.isAfter(now) && target.isBefore(now.plusDays(days))
     }
+
+    fun isPast(value: String?): Boolean = parse(value)?.isBefore(nowInKualaLumpur()) ?: true
+
+    /** Converts a date-picker millis value + KL wall-clock time to a UTC API timestamp. */
+    fun toApiTimestamp(datePickerMillis: Long, hour: Int, minute: Int): String {
+        val date = dateFromPickerMillis(datePickerMillis)
+        return date
+            .atTime(hour, minute)
+            .atZone(kualaLumpur)
+            .toInstant()
+            .toString()
+    }
+
+    fun toApiTimestamp(date: LocalDate, hour: Int, minute: Int): String =
+        date.atTime(hour, minute).atZone(kualaLumpur).toInstant().toString()
+
+    fun localDate(value: String?): LocalDate? = parse(value)?.toLocalDate()
 
     fun formatDate(epochMillis: Long?): String {
         if (epochMillis == null) return "Choose a date"

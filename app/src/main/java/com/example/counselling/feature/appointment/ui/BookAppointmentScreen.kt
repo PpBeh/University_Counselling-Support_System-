@@ -65,10 +65,15 @@ import java.time.LocalDate
 fun BookAppointmentRoute(
     repository: AppointmentRepository,
     sessionManager: SessionManager,
+    initialConcern: String? = null,
     onClose: () -> Unit,
 ) {
     val viewModel: BookAppointmentViewModel = viewModel(
-        factory = BookAppointmentViewModel.factory(repository, sessionManager),
+        factory = BookAppointmentViewModel.factory(
+            repository,
+            sessionManager,
+            initialConcern,
+        ),
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarState = remember { SnackbarHostState() }

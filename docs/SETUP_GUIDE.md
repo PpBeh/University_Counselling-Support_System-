@@ -19,6 +19,9 @@ docs/
   SETUP_GUIDE.md        # this file
   DATA_DICTIONARY.md
   ERD.mmd
+  MODULE_NOTES.md       # module ownership and implementation notes
+  FINAL_CHECKLIST.md    # submission / hand-off checklist
+supabase.properties     # shared publishable Supabase URL + key (tracked)
 ```
 
 Backend setup can be completed before the Android screens are finished. The SQL and RLS proof tests run entirely in the Supabase SQL Editor. Only the student-account fallback in Step 7 needs the app.
@@ -228,7 +231,7 @@ Faris:
 
 If your Dashboard version does not show a user-metadata field:
 
-1. Complete Step 6 (fill `local.properties` and run the app).
+1. Complete Step 6 (confirm the shared Supabase config and run the app).
 2. Use the app's **Register** screen for Aina and then Faris, entering exactly the same emails, student IDs, programme, Malaysian phone and session mode shown above.
 3. Sign out between registrations.
 4. Return to the SQL Editor and run `seed_demo.sql`.
@@ -309,25 +312,33 @@ If the script reports missing users or roles, **do not work around it by editing
 
 ## 6. Configure the Android app
 
-### 6.1 Fill `local.properties`
+### 6.1 Supabase configuration (shared file + local override)
 
-Open the project's `local.properties` (the same file that contains `sdk.dir`) and add:
+The repository **intentionally tracks** `supabase.properties` at the project root so the publishable project URL and client key travel with the source code for hand-off:
 
 ```properties
 SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 SUPABASE_ANON_KEY=YOUR_PUBLISHABLE_OR_ANON_KEY
 ```
 
+This is the **publishable client key**, not a server secret. It is designed to be shipped inside a client app; row-level security protects the data. The file is checked in and is not ignored.
+
+`local.properties` remains machine-specific because it also contains `sdk.dir`. It is still ignored by Git and can override the Supabase values for your own machine. The build order is:
+
+1. `local.properties` (if present and non-blank)
+2. `supabase.properties`
+3. `SUPABASE_URL` / `SUPABASE_ANON_KEY` environment variables
+
 Rules:
 
-- No quotes around the values.
+- No quotes around values.
 - `SUPABASE_URL` has **no** trailing slash.
-- `SUPABASE_ANON_KEY` is the publishable/anon key, **not** the secret/service_role key.
-- `local.properties` is already in `.gitignore`; keep it out of Git and never paste real keys into documentation or screenshots.
+- `SUPABASE_ANON_KEY` must be the publishable/anon key. **Never use a service_role/secret key** in either file, BuildConfig, source, screenshots or Git.
+- If you point at a different Supabase project, update the shared file (or your local override) and rebuild.
 
-The Gradle build reads these two properties and exposes them as `BuildConfig.SUPABASE_URL` and `BuildConfig.SUPABASE_ANON_KEY`. The project still compiles without them (so the code can be reviewed and built before a Supabase project is ready); the app shows a clear configuration-error screen at launch if either value is missing. No URL or key is ever hard-coded in source.
+Gradle exposes the values as `BuildConfig.SUPABASE_URL` and `BuildConfig.SUPABASE_ANON_KEY`. Missing values still allow the project to compile; the app shows a configuration-error screen at launch. No URL or key is hard-coded in Kotlin source.
 
-For the exact Gradle code, see `app/build.gradle.kts` once Phase 2 is applied.
+For the exact Gradle code, see [app/build.gradle.kts](../app/build.gradle.kts).
 
 ### 6.2 Run the app
 
@@ -406,9 +417,9 @@ Because anonymous enquiries store no identity, the **student must copy and keep*
 
 ### 9.2 HTTP 401 / "Invalid JWT" / "Invalid API key"
 
-- Check `local.properties`: both properties must exist, with no quotes and no trailing slash on the URL.
+- Check `supabase.properties` (shared) and `local.properties` (machine override): both properties must resolve, with no quotes and no trailing slash on the URL.
 - The key must be the **publishable/anon** key. A mismatch between Project URL and key produces 401.
-- Rebuild after editing `local.properties`; `BuildConfig` values are generated at build time.
+- Rebuild after editing either configuration file; `BuildConfig` values are generated at build time.
 - Clear the app data or sign out/in after changing Supabase projects or keys.
 - Confirm the device clock/time zone is automatic and correct.
 - If email confirmation is on, sign-in fails with "Email not confirmed"; disable confirmation for the demo and/or auto-confirm the existing user.
@@ -421,7 +432,7 @@ Because anonymous enquiries store no identity, the **student must copy and keep*
   notify pgrst, 'reload schema';
   ```
   If that is not picked up, open **Project Settings → API → Reload schema cache** (or restart the local development session).
-- Check the Table Editor to confirm you are in the project whose URL/key match `local.properties`.
+- Check the Table Editor to confirm you are in the project whose URL/key match the resolved configuration.
 
 ### 9.4 "function ... does not exist" or wrong RPC arguments
 
@@ -920,7 +931,7 @@ If you need a clean run:
 1. Create a new Supabase project (safest) and repeat Steps 3–6.
 2. Or, in the SQL Editor, drop the app views/tables **and** the Auth users, then re-run the scripts. Dropping application tables while Auth users still exist will leave users without profiles; delete/recreate the users or use a fresh project.
 
-Do not commit `local.properties`, API keys, screenshots containing keys, or database dumps containing real student data.
+`supabase.properties` intentionally tracks the publishable project URL and client key. Do **not** commit a service_role/secret key, screenshots containing a secret key, or database dumps containing real student data. Keep machine-specific `local.properties` out of Git.
 
 ---
 

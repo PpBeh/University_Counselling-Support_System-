@@ -6,9 +6,12 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-// Supabase values are kept in local.properties so nothing secret is committed.
-// Missing values are allowed at compile time; the app shows a setup screen at
-// runtime instead of using hard-coded placeholders.
+// Supabase values can live in two places:
+//   1. local.properties  — machine-local overrides, gitignored.
+//   2. supabase.properties — shared publishable client config, tracked for hand-off.
+// local.properties wins. These are publishable/anon client values only; never
+// put a service_role / secret key in either file. The app's RLS policies are
+// what protect the data.
 val localProperties = Properties().apply {
     val file = rootProject.file("local.properties")
     if (file.exists()) {
@@ -16,7 +19,17 @@ val localProperties = Properties().apply {
     }
 }
 
-fun localValue(key: String): String = localProperties.getProperty(key, "").trim()
+val sharedProperties = Properties().apply {
+    val file = rootProject.file("supabase.properties")
+    if (file.exists()) {
+        file.inputStream().use { load(it) }
+    }
+}
+
+fun configValue(key: String): String = localProperties.getProperty(key, "")
+    .ifBlank { sharedProperties.getProperty(key, "") }
+    .ifBlank { System.getenv(key).orEmpty() }
+    .trim()
 
 fun buildConfigString(value: String): String =
     "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
@@ -36,8 +49,8 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "SUPABASE_URL", buildConfigString(localValue("SUPABASE_URL")))
-        buildConfigField("String", "SUPABASE_ANON_KEY", buildConfigString(localValue("SUPABASE_ANON_KEY")))
+        buildConfigField("String", "SUPABASE_URL", buildConfigString(configValue("SUPABASE_URL")))
+        buildConfigField("String", "SUPABASE_ANON_KEY", buildConfigString(configValue("SUPABASE_ANON_KEY")))
     }
 
     buildTypes {

@@ -31,4 +31,12 @@ object AppConstants {
     val riskLevels = listOf("low", "medium", "high")
     val resourceMediaTypes = listOf("Article", "Video", "Audio", "Hotline", "PDF")
     val stressBrackets = listOf("low", "moderate", "high")
+
+    val stressBracketLabels = mapOf(
+        "low" to "Low",
+        "moderate" to "Moderate",
+        "high" to "High",
+    )
+
+    val enquiryStatuses = listOf("open", "answered", "closed")
 }

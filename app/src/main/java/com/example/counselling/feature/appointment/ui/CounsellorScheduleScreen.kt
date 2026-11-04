@@ -6,8 +6,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -43,11 +45,13 @@ import com.example.counselling.ui.components.EmptyState
 import com.example.counselling.ui.components.ErrorState
 import com.example.counselling.ui.components.FilterChipRow
 import com.example.counselling.ui.components.LoadingShimmer
+import com.example.counselling.ui.components.SecondaryButton
 import com.example.counselling.ui.components.showAppMessage
 
 @Composable
 fun CounsellorScheduleRoute(
     repository: AppointmentRepository,
+    onManageAvailability: () -> Unit,
 ) {
     val viewModel: AppointmentsViewModel = viewModel(
         factory = AppointmentsViewModel.factory(repository),
@@ -62,6 +66,7 @@ fun CounsellorScheduleRoute(
     CounsellorScheduleScreen(
         state = state,
         snackbarHostState = snackbarState,
+        onManageAvailability = onManageAvailability,
         onConfirm = { id -> viewModel.updateStatus(id, "confirmed") },
         onComplete = { id -> viewModel.updateStatus(id, "completed") },
         onNoShow = { id -> viewModel.updateStatus(id, "no_show") },
@@ -75,6 +80,7 @@ fun CounsellorScheduleRoute(
 private fun CounsellorScheduleScreen(
     state: AppointmentsUiState,
     snackbarHostState: SnackbarHostState,
+    onManageAvailability: () -> Unit,
     onConfirm: (String) -> Unit,
     onComplete: (String) -> Unit,
     onNoShow: (String) -> Unit,
@@ -124,6 +130,11 @@ private fun CounsellorScheduleScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
                 )
+                SecondaryButton(
+                    text = "Manage my availability",
+                    onClick = onManageAvailability,
+                )
+                Spacer(Modifier.height(10.dp))
             }
 
             FilterChipRow(

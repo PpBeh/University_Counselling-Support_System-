@@ -44,6 +44,7 @@ import com.example.counselling.core.DateTimeUtils
 import com.example.counselling.core.UserRole
 import com.example.counselling.feature.appointment.model.Appointment
 import com.example.counselling.feature.appointment.ui.AppointmentCard
+import com.example.counselling.feature.records.model.AdminDashboardStats
 import com.example.counselling.feature.student.model.Profile
 import com.example.counselling.navigation.Routes
 import com.example.counselling.ui.components.AppTopBar
@@ -65,6 +66,10 @@ fun HomeScreen(
     isLoadingAppointments: Boolean = false,
     appointmentError: String? = null,
     onRetryAppointments: () -> Unit = {},
+    adminStats: AdminDashboardStats? = null,
+    isLoadingStats: Boolean = false,
+    statsError: String? = null,
+    onRetryStats: () -> Unit = {},
 ) {
     val role = profile.userRole ?: UserRole.STUDENT
 
@@ -102,7 +107,13 @@ fun HomeScreen(
                     onRetryAppointments = onRetryAppointments,
                 )
                 UserRole.COUNSELLOR -> CounsellorHome(onNavigate)
-                UserRole.ADMIN -> AdminHome(onNavigate)
+                UserRole.ADMIN -> AdminHome(
+                    onNavigate = onNavigate,
+                    stats = adminStats,
+                    isLoadingStats = isLoadingStats,
+                    statsError = statsError,
+                    onRetryStats = onRetryStats,
+                )
             }
 
             Spacer(Modifier.height(28.dp))
@@ -341,7 +352,86 @@ private fun CounsellorHome(onNavigate: (String) -> Unit) {
 }
 
 @Composable
-private fun AdminHome(onNavigate: (String) -> Unit) {
+private fun AdminHome(
+    onNavigate: (String) -> Unit,
+    stats: AdminDashboardStats?,
+    isLoadingStats: Boolean,
+    statsError: String?,
+    onRetryStats: () -> Unit,
+) {
+    SectionHeader(
+        title = "At a glance",
+        subtitle = "Aggregate numbers only — no private notes or individual records.",
+    )
+    Spacer(Modifier.height(10.dp))
+    when {
+        isLoadingStats -> LoadingShimmer(rows = 2)
+        statsError != null -> InfoCard(
+            title = "Could not load statistics",
+            body = statsError,
+            actionLabel = "Try again",
+            onAction = onRetryStats,
+        )
+        stats != null -> {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatCard(
+                    label = "Students",
+                    value = "${stats.activeStudents}/${stats.totalStudents}",
+                    modifier = Modifier.weight(1f),
+                )
+                StatCard(
+                    label = "Counsellors",
+                    value = "${stats.activeCounsellors}/${stats.totalCounsellors}",
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatCard(
+                    label = "Upcoming sessions",
+                    value = stats.upcomingAppointments.toString(),
+                    modifier = Modifier.weight(1f),
+                )
+                StatCard(
+                    label = "Completed",
+                    value = stats.completedAppointments.toString(),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatCard(
+                    label = "Session records",
+                    value = stats.sessionRecords.toString(),
+                    modifier = Modifier.weight(1f),
+                )
+                StatCard(
+                    label = "Published resources",
+                    value = stats.publishedResources.toString(),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatCard(
+                    label = "Feedback ratings",
+                    value = stats.feedbackCount.toString(),
+                    modifier = Modifier.weight(1f),
+                )
+                StatCard(
+                    label = "Average rating",
+                    value = if (stats.feedbackCount == 0) {
+                        "—"
+                    } else {
+                        String.format(java.util.Locale.US, "%.1f ★", stats.averageRating)
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+
+    Spacer(Modifier.height(22.dp))
     SectionHeader(
         title = "Service overview",
         subtitle = "Manage the people and resources around student care.",
@@ -404,6 +494,29 @@ private fun AdminHome(onNavigate: (String) -> Unit) {
         containerColor = SuccessContainer.copy(alpha = 0.45f),
         accentColor = SuccessGreen,
     )
+}
+
+@Composable
+private fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
 
 @Composable
