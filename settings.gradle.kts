@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Counselling_System"
+rootProject.name = "CounsellingSupport"
 include(":app")

@@ -1,0 +1,120 @@
+erDiagram
+    %% University Counselling Appointment & Support System
+    %% Supabase-managed auth.users is shown because profiles/counsellors reference it.
+    %% Views (available_slots_view, student_session_summaries) are query helpers,
+    %% not independent entities, so they are omitted from the entity diagram.
+
+    AUTH_USERS {
+        uuid id PK
+        text email
+    }
+
+    PROFILES {
+        uuid id PK
+        text email UK
+        text role
+        text full_name
+        text student_id UK
+        text programme
+        text phone
+        text preferred_session_mode
+        boolean is_active
+    }
+
+    ADMIN_WHITELIST {
+        bigint id PK
+        text email UK
+        timestamptz created_at
+    }
+
+    COUNSELLORS {
+        uuid id PK
+        uuid user_id FK,UK
+        text full_name
+        text email UK
+        text_array specialisations
+        text_array languages
+        text bio
+        boolean is_active
+    }
+
+    AVAILABILITY_SLOTS {
+        uuid id PK
+        uuid counsellor_id FK
+        timestamptz start_at
+        timestamptz end_at
+    }
+
+    APPOINTMENTS {
+        uuid id PK
+        uuid student_id FK
+        uuid counsellor_id FK
+        uuid slot_id FK
+        text mode
+        text concern_category
+        text note
+        text status
+        uuid follow_up_of FK
+    }
+
+    SESSION_RECORDS {
+        uuid id PK
+        uuid appointment_id FK,UK
+        uuid counsellor_id FK
+        uuid student_id FK
+        text private_notes
+        text public_summary
+        text risk_level
+        boolean follow_up_needed
+        timestamptz follow_up_due
+        boolean is_archived
+    }
+
+    RESOURCES {
+        uuid id PK
+        text title UK
+        text description
+        text category
+        text media_type
+        text content_url
+        text_array target_stress_brackets
+        boolean is_published
+    }
+
+    ENQUIRIES {
+        uuid id PK
+        text reference_code UK
+        uuid student_id FK
+        boolean is_anonymous
+        text category
+        text message
+        text status
+        text reply
+        uuid recommended_resource_id FK
+        timestamptz replied_at
+    }
+
+    FEEDBACK {
+        uuid id PK
+        uuid appointment_id FK,UK
+        uuid student_id FK
+        uuid counsellor_id FK
+        integer rating
+        text comment
+    }
+
+    AUTH_USERS ||--|| PROFILES : "has one app profile"
+    AUTH_USERS |o--o| COUNSELLORS : "may be linked"
+    COUNSELLORS ||--o{ AVAILABILITY_SLOTS : "offers"
+    PROFILES ||--o{ APPOINTMENTS : "books as student"
+    COUNSELLORS ||--o{ APPOINTMENTS : "serves"
+    AVAILABILITY_SLOTS ||--o{ APPOINTMENTS : "is reserved by"
+    APPOINTMENTS ||--o| SESSION_RECORDS : "has one record"
+    PROFILES ||--o{ SESSION_RECORDS : "is the student"
+    COUNSELLORS ||--o{ SESSION_RECORDS : "writes"
+    APPOINTMENTS |o--o{ APPOINTMENTS : "follow-up of"
+    PROFILES |o--o{ ENQUIRIES : "may submit"
+    RESOURCES |o--o{ ENQUIRIES : "is recommended in"
+    APPOINTMENTS ||--o| FEEDBACK : "receives one rating"
+    PROFILES ||--o{ FEEDBACK : "writes"
+    COUNSELLORS ||--o{ FEEDBACK : "receives"

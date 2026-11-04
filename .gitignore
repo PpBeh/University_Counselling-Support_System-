@@ -8,6 +8,8 @@
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
 .DS_Store
+# Local scratch files created during database/tooling checks
+.tmp/
 /build
 /captures
 .externalNativeBuild

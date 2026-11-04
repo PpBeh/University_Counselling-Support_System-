@@ -1,0 +1,45 @@
+// UI theme | Owner: shared (Beh, Jeremy, Michael)
+// Calm wellbeing palette used by both light and dark Material 3 schemes.
+package com.example.counselling.ui.theme
+
+import androidx.compose.ui.graphics.Color
+
+val TealPrimary = Color(0xFF2A9D8F)
+val TealOnPrimary = Color(0xFFFFFFFF)
+val TealPrimaryContainer = Color(0xFFC9EFEA)
+val TealOnPrimaryContainer = Color(0xFF063D38)
+val TealDarkPrimary = Color(0xFF7DD6CA)
+val TealDarkOnPrimary = Color(0xFF003731)
+val TealDarkPrimaryContainer = Color(0xFF1D6058)
+val TealDarkOnPrimaryContainer = Color(0xFFB8EDE5)
+
+val LavenderSecondary = Color(0xFF8E7CC3)
+val LavenderOnSecondary = Color(0xFFFFFFFF)
+val LavenderSecondaryContainer = Color(0xFFEDE7F9)
+val LavenderOnSecondaryContainer = Color(0xFF302450)
+val LavenderDarkSecondary = Color(0xFFCDBDF4)
+val LavenderDarkOnSecondary = Color(0xFF372B5C)
+val LavenderDarkSecondaryContainer = Color(0xFF4E4176)
+val LavenderDarkOnSecondaryContainer = Color(0xFFE9DDFF)
+
+val WarmBackground = Color(0xFFF7F9F9)
+val WarmSurface = Color(0xFFFFFFFF)
+val SoftInk = Color(0xFF1B2B29)
+val MutedInk = Color(0xFF55605E)
+val SoftOutline = Color(0xFFC8D3D0)
+val SoftSurfaceVariant = Color(0xFFE7EEEC)
+val SoftError = Color(0xFFD64545)
+val SoftErrorContainer = Color(0xFFFBE5E5)
+val SuccessGreen = Color(0xFF2E7D32)
+val SuccessContainer = Color(0xFFDDF3E1)
+val WarningAmber = Color(0xFF9A6A00)
+val WarningContainer = Color(0xFFFFEFC8)
+
+val NightBackground = Color(0xFF101817)
+val NightSurface = Color(0xFF17211F)
+val NightSurfaceVariant = Color(0xFF2A3835)
+val NightInk = Color(0xFFE5F0ED)
+val NightMutedInk = Color(0xFFB8C7C3)
+val NightOutline = Color(0xFF83938F)
+val NightError = Color(0xFFFFB4AB)
+val NightErrorContainer = Color(0xFF8C1D18)
