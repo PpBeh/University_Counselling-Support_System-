@@ -82,6 +82,21 @@ object ErrorMapper {
                 "counsellor with this email" in raw ->
                 "A counsellor with this email already exists."
 
+            "confirm or decline a pending booking" in raw ->
+                "That status change is not allowed for this booking."
+
+            "only confirmed sessions can be rescheduled by the counsellor" in raw ->
+                "Only confirmed sessions can be rescheduled by the counsellor."
+
+            "session has already started and cannot be cancelled" in raw ->
+                "This session has already started and cannot be cancelled from the app."
+
+            "already started and cannot be rescheduled" in raw ->
+                "This session has already started and cannot be rescheduled."
+
+            "that booking time has already passed" in raw ->
+                "That booking time has already passed."
+
             "has upcoming appointments" in raw ->
                 "This counsellor has upcoming appointments. Resolve them before removing the counsellor."
 

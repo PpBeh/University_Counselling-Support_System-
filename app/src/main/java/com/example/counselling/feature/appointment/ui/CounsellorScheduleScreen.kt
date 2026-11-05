@@ -32,6 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.DateTimeUtils
@@ -52,6 +54,7 @@ import com.example.counselling.ui.components.showAppMessage
 fun CounsellorScheduleRoute(
     repository: AppointmentRepository,
     onManageAvailability: () -> Unit,
+    onReschedule: (String) -> Unit,
 ) {
     val viewModel: AppointmentsViewModel = viewModel(
         factory = AppointmentsViewModel.factory(repository),
@@ -62,14 +65,20 @@ fun CounsellorScheduleRoute(
     LaunchedEffect(Unit) {
         viewModel.messages.collect { snackbarState.showAppMessage(it) }
     }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.load()
+    }
 
     CounsellorScheduleScreen(
         state = state,
         snackbarHostState = snackbarState,
         onManageAvailability = onManageAvailability,
         onConfirm = { id -> viewModel.updateStatus(id, "confirmed") },
+        onDecline = viewModel::declineBooking,
         onComplete = { id -> viewModel.updateStatus(id, "completed") },
         onNoShow = { id -> viewModel.updateStatus(id, "no_show") },
+        onCancelSession = viewModel::cancelConfirmedSession,
+        onReschedule = onReschedule,
         onRefresh = viewModel::refresh,
         onRetry = viewModel::retry,
     )
@@ -82,8 +91,11 @@ private fun CounsellorScheduleScreen(
     snackbarHostState: SnackbarHostState,
     onManageAvailability: () -> Unit,
     onConfirm: (String) -> Unit,
+    onDecline: (String) -> Unit,
     onComplete: (String) -> Unit,
     onNoShow: (String) -> Unit,
+    onCancelSession: (String) -> Unit,
+    onReschedule: (String) -> Unit,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
 ) {
@@ -92,6 +104,8 @@ private fun CounsellorScheduleScreen(
     var selectedFilter by remember { mutableStateOf("All") }
     var selectedTimeFilter by remember { mutableStateOf("Upcoming") }
     var pendingNoShow by remember { mutableStateOf<Appointment?>(null) }
+    var pendingDecline by remember { mutableStateOf<Appointment?>(null) }
+    var pendingCancel by remember { mutableStateOf<Appointment?>(null) }
 
     val appointments = remember(state.appointments, selectedFilter, selectedTimeFilter) {
         val byTime = when (selectedTimeFilter) {
@@ -125,7 +139,7 @@ private fun CounsellorScheduleScreen(
                     style = MaterialTheme.typography.headlineSmall,
                 )
                 Text(
-                    text = "Confirm requests and close the loop after each session.",
+                    text = "Confirm requests, decline what you cannot take, or manage an emergency change.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
@@ -179,7 +193,7 @@ private fun CounsellorScheduleScreen(
                                 } else {
                                     "No $selectedFilter sessions"
                                 },
-                                message = "Booked student appointments will appear here. Availability is managed in the Schedule tools added with Module 3.",
+                                message = "Booked student appointments will appear here. Manage your free slots from this screen.",
                             )
                         }
                     } else {
@@ -202,6 +216,22 @@ private fun CounsellorScheduleScreen(
                                     } else {
                                         null
                                     },
+                                    onDecline = if (appointment.status == "pending") {
+                                        { pendingDecline = appointment }
+                                    } else {
+                                        null
+                                    },
+                                    onReschedule = if (appointment.status == "confirmed") {
+                                        { onReschedule(appointment.id) }
+                                    } else {
+                                        null
+                                    },
+                                    onCancel = if (appointment.status == "confirmed") {
+                                        { pendingCancel = appointment }
+                                    } else {
+                                        null
+                                    },
+                                    cancelLabel = "Cancel session",
                                     onComplete = if (appointment.status == "confirmed") {
                                         { onComplete(appointment.id) }
                                     } else {
@@ -226,6 +256,26 @@ private fun CounsellorScheduleScreen(
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
                 .padding(16.dp),
+        )
+    }
+
+    pendingDecline?.let { appointment ->
+        ConfirmDialog(
+            title = "Decline this booking?",
+            message = "The pending request from ${appointment.studentName} will be cancelled and the slot released. The student will see it in Cancelled.",
+            confirmLabel = "Decline booking",
+            onConfirm = { onDecline(appointment.id) },
+            onDismiss = { pendingDecline = null },
+        )
+    }
+
+    pendingCancel?.let { appointment ->
+        ConfirmDialog(
+            title = "Cancel this confirmed session?",
+            message = "Use this for an emergency. ${appointment.studentName} will see the session as Cancelled and the slot will be released for someone else.",
+            confirmLabel = "Cancel session",
+            onConfirm = { onCancelSession(appointment.id) },
+            onDismiss = { pendingCancel = null },
         )
     }
 

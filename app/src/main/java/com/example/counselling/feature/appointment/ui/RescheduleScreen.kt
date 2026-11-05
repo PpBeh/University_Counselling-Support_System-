@@ -49,10 +49,11 @@ import com.example.counselling.ui.components.showAppMessage
 fun RescheduleRoute(
     appointmentId: String,
     repository: AppointmentRepository,
+    isCounsellor: Boolean = false,
     onBack: () -> Unit,
 ) {
     val viewModel: RescheduleViewModel = viewModel(
-        factory = RescheduleViewModel.factory(appointmentId, repository),
+        factory = RescheduleViewModel.factory(appointmentId, repository, isCounsellor),
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarState = remember { SnackbarHostState() }
@@ -63,7 +64,10 @@ fun RescheduleRoute(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            AppTopBar(title = "Reschedule", onBack = onBack)
+            AppTopBar(
+                title = if (isCounsellor) "Reschedule session" else "Reschedule",
+                onBack = onBack,
+            )
 
             when {
                 state.isLoading -> LoadingShimmer(
@@ -83,12 +87,19 @@ fun RescheduleRoute(
                         .padding(20.dp),
                 ) {
                     InfoCard(
-                        title = "Too late to reschedule",
+                        title = if (isCounsellor) {
+                            "Cannot reschedule this session"
+                        } else {
+                            "Too late to reschedule"
+                        },
                         body = state.error
-                            ?: "Appointments can only be rescheduled at least 12 hours in advance.",
+                            ?: "This session cannot be rescheduled here.",
                     )
                     Spacer(Modifier.height(16.dp))
-                    SecondaryButton(text = "Back to appointments", onClick = onBack)
+                    SecondaryButton(
+                        text = if (isCounsellor) "Back to schedule" else "Back to appointments",
+                        onClick = onBack,
+                    )
                 }
 
                 state.success -> Column(
@@ -113,20 +124,31 @@ fun RescheduleRoute(
                         }
                     }
                     Text(
-                        text = "Appointment rescheduled",
+                        text = if (isCounsellor) {
+                            "Session rescheduled"
+                        } else {
+                            "Appointment rescheduled"
+                        },
                         style = MaterialTheme.typography.headlineSmall,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(top = 18.dp),
                     )
                     Text(
-                        text = "Your new time is waiting in Appointments.",
+                        text = if (isCounsellor) {
+                            "The student will see the confirmed session at its new time."
+                        } else {
+                            "Your new time is waiting in Appointments."
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(top = 8.dp),
                     )
                     Spacer(Modifier.height(22.dp))
-                    PrimaryButton(text = "Back to appointments", onClick = onBack)
+                    PrimaryButton(
+                        text = if (isCounsellor) "Back to schedule" else "Back to appointments",
+                        onClick = onBack,
+                    )
                 }
 
                 else -> {
@@ -141,13 +163,22 @@ fun RescheduleRoute(
                     ) {
                         InfoCard(
                             title = "Current appointment",
-                            body = "${appointment.slotStart.let { DateTimeUtils.formatDateTime(it) }} " +
-                                "with ${appointment.counsellorName}",
+                            body = if (isCounsellor) {
+                                "${appointment.slotStart.let { DateTimeUtils.formatDateTime(it) }} " +
+                                    "with ${appointment.studentName}"
+                            } else {
+                                "${appointment.slotStart.let { DateTimeUtils.formatDateTime(it) }} " +
+                                    "with ${appointment.counsellorName}"
+                            },
                         )
                         Spacer(Modifier.height(16.dp))
                         SectionHeader(
                             title = "Choose a new time",
-                            subtitle = "Only free slots with the same counsellor are shown.",
+                            subtitle = if (isCounsellor) {
+                                "Emergency reschedule: choose a future free slot with the same counsellor. The session stays confirmed."
+                            } else {
+                                "Only free slots with the same counsellor are shown."
+                            },
                         )
                         Spacer(Modifier.height(8.dp))
 

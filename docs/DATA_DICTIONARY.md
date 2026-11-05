@@ -23,7 +23,8 @@ These values are mirrored in `core/Constants.kt` in the Android app.
 | Resource media types | `Article`, `Video`, `Audio`, `Hotline`, `PDF` | resources |
 | Self-check stress brackets | `low`, `moderate`, `high` | resources' target brackets |
 | Maximum active bookings | `2` | enforced in booking/follow-up functions |
-| Minimum reschedule notice | `12 hours` | enforced in `reschedule_appointment` |
+| Minimum student reschedule notice | `12 hours` | enforced in `reschedule_appointment` |
+| Counsellor emergency notice | no 12-hour minimum | `counsellor_reschedule_appointment` for confirmed sessions |
 | Session record edit window | `7 days` | enforced in `trg_session_record_update` |
 
 The self-check score brackets are application constants (0–13 Low, 14–26 Moderate, 27–40 High). Questionnaire answers and scores are **not stored** anywhere in this schema.
@@ -379,7 +380,8 @@ All RPC functions are `SECURITY DEFINER` with an explicit `search_path`. They re
 | `book_appointment` | `(p_slot_id uuid, p_mode text, p_concern_category text, p_note text default null) → uuid` | Active students | Atomic booking with active cap, overlap and slot checks |
 | `reschedule_appointment` | `(p_appointment_id uuid, p_new_slot_id uuid) → void` | Owning active student | Moves booking to a free slot with the same counsellor, ≥12 hours before the old start |
 | `cancel_appointment` | `(p_appointment_id uuid) → void` | Owning active student | Sets `cancelled`, releasing the slot |
-| `update_appointment_status` | `(p_appointment_id uuid, p_new_status text) → void` | Assigned active counsellor | pending→confirmed, confirmed→completed/no_show |
+| `counsellor_reschedule_appointment` | `(p_appointment_id uuid, p_new_slot_id uuid) → void` | Assigned active counsellor | Moves a confirmed session to another free slot of the same counsellor; no 12-hour student notice; checks future slot, student overlap and slot race |
+| `update_appointment_status` | `(p_appointment_id uuid, p_new_status text) → void` | Assigned active counsellor | pending→confirmed/cancelled (decline); confirmed→completed/no_show/cancelled (emergency); blocks actions after the slot has started |
 | `create_followup_appointment` | `(p_record_id uuid, p_slot_id uuid) → uuid` | Owning active counsellor | Creates a pending follow-up appointment with `follow_up_of` set |
 | `deactivate_account` | `() → void` | Active students | Blocks if upcoming active appointments exist, then sets `profiles.is_active = false` |
 | `delete_counsellor` | `(p_counsellor_id uuid) → text` | Admins | Blocks upcoming active appointments; deactivates if history exists, otherwise hard deletes; a linked Auth profile is disabled on hard delete, and the function returns `deleted` or `deactivated` |
@@ -451,11 +453,12 @@ RLS is enabled on every table. `anon` has no access to any application table or 
 | Rule | Where enforced |
 |---|---|
 | Max 2 active upcoming bookings per student | `book_appointment`, `create_followup_appointment` |
-| No overlapping appointments for one student | `book_appointment`, `reschedule_appointment`, `create_followup_appointment` |
+| No overlapping appointments for one student | `book_appointment`, `reschedule_appointment`, `counsellor_reschedule_appointment`, `create_followup_appointment` |
 | No double booking | Partial unique index + slot row lock in booking functions |
 | No past slots | `trg_availability_slot_guard` + functions |
 | No overlapping counsellor slots | `availability_slots_no_overlap` + guard trigger |
-| 12-hour reschedule notice | `reschedule_appointment` |
+| 12-hour student reschedule notice | `reschedule_appointment` |
+| Counsellor emergency changes before start | `counsellor_reschedule_appointment`, `update_appointment_status` |
 | Valid status transitions | `trg_appointment_status_transition` + status RPC |
 | Completed-only session records | `prepare_session_record()` trigger |
 | One record per appointment | Unique constraint + trigger |

@@ -1,6 +1,6 @@
 // Module 2 | Owner: Beh
-// Reschedule keeps the counsellor and concern, changes only the time slot and
-// relies on the 12-hour notice rule enforced by the database function.
+// Students keep the 12-hour notice rule. A counsellor may reschedule one of
+// their own confirmed sessions without that notice rule for an emergency.
 package com.example.counselling.feature.appointment.ui
 
 import androidx.lifecycle.ViewModel
@@ -35,6 +35,7 @@ data class RescheduleUiState(
 class RescheduleViewModel(
     private val appointmentId: String,
     private val repository: AppointmentRepository,
+    private val isCounsellor: Boolean,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RescheduleUiState())
@@ -61,12 +62,19 @@ class RescheduleViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSubmitting = true) }
-            val result = repository.rescheduleAppointment(appointment.id, slotId)
+            val result = if (isCounsellor) {
+                repository.counsellorRescheduleAppointment(appointment.id, slotId)
+            } else {
+                repository.rescheduleAppointment(appointment.id, slotId)
+            }
             _uiState.update { it.copy(isSubmitting = false) }
             result.onSuccess {
                 _uiState.update { it.copy(success = true) }
                 _messages.send(
-                    UiMessage("Appointment rescheduled.", MessageKind.SUCCESS),
+                    UiMessage(
+                        if (isCounsellor) "Session rescheduled." else "Appointment rescheduled.",
+                        MessageKind.SUCCESS,
+                    ),
                 )
             }.onFailure { error ->
                 _messages.send(
@@ -91,14 +99,35 @@ class RescheduleViewModel(
                 return@launch
             }
 
-            if (!DateTimeUtils.canReschedule(appointment.slotStart)) {
-                _uiState.value = RescheduleUiState(
-                    isLoading = false,
-                    appointment = appointment,
-                    tooLateToChange = true,
-                    error = "Appointments can only be rescheduled at least 12 hours before the session.",
-                )
-                return@launch
+            if (isCounsellor) {
+                if (appointment.status != "confirmed") {
+                    _uiState.value = RescheduleUiState(
+                        isLoading = false,
+                        appointment = appointment,
+                        tooLateToChange = true,
+                        error = "Only confirmed sessions can be rescheduled by the counsellor.",
+                    )
+                    return@launch
+                }
+            } else {
+                if (appointment.status !in listOf("pending", "confirmed")) {
+                    _uiState.value = RescheduleUiState(
+                        isLoading = false,
+                        appointment = appointment,
+                        tooLateToChange = true,
+                        error = "Only pending or confirmed appointments can be rescheduled.",
+                    )
+                    return@launch
+                }
+                if (!DateTimeUtils.canReschedule(appointment.slotStart)) {
+                    _uiState.value = RescheduleUiState(
+                        isLoading = false,
+                        appointment = appointment,
+                        tooLateToChange = true,
+                        error = "Appointments can only be rescheduled at least 12 hours before the session.",
+                    )
+                    return@launch
+                }
             }
 
             repository.getAvailableSlots()
@@ -126,8 +155,11 @@ class RescheduleViewModel(
         fun factory(
             appointmentId: String,
             repository: AppointmentRepository,
+            isCounsellor: Boolean,
         ) = viewModelFactory {
-            initializer { RescheduleViewModel(appointmentId, repository) }
+            initializer {
+                RescheduleViewModel(appointmentId, repository, isCounsellor)
+            }
         }
     }
 }

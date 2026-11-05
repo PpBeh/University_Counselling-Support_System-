@@ -140,6 +140,24 @@ class AppointmentRepository(private val supabase: SupabaseClient) {
         Result.failure(Exception(ErrorMapper.message(error, "Could not reschedule the appointment.")))
     }
 
+    suspend fun counsellorRescheduleAppointment(
+        appointmentId: String,
+        newSlotId: String,
+    ): Result<Unit> = try {
+        supabase.postgrest.rpc(
+            "counsellor_reschedule_appointment",
+            buildJsonObject {
+                put("p_appointment_id", appointmentId)
+                put("p_new_slot_id", newSlotId)
+            },
+        )
+        Result.success(Unit)
+    } catch (error: Exception) {
+        Result.failure(
+            Exception(ErrorMapper.message(error, "Could not reschedule the session.")),
+        )
+    }
+
     suspend fun cancelAppointment(appointmentId: String): Result<Unit> = try {
         supabase.postgrest.rpc(
             "cancel_appointment",

@@ -15,7 +15,14 @@ The project includes all six required modules, three role-specific dashboards, a
 
 The **Android code and backend schema are complete and the app builds successfully**. The current Supabase project's five demo Auth users were previously inserted directly into `auth.users`; their malformed rows cause a `500 Database error querying schema` when signing in. Unknown emails correctly return a normal `400 invalid_credentials`.
 
-Recreate those users through **Supabase Authentication → Users** and follow [SETUP_GUIDE §9.16](docs/SETUP_GUIDE.md). Never insert directly into `auth.users` with raw SQL. Until this is repaired, the app's login screen is reachable but role-specific end-to-end testing cannot use the demo accounts.
+Deleting those users in the Dashboard is also blocked by restrictive appointment/record/feedback foreign keys, and creating a student in the Dashboard fails because the Auth trigger requires student metadata. The fix is:
+
+1. Run [`supabase/reset_demo_auth.sql`](supabase/reset_demo_auth.sql) (demo-only, destructive cleanup).
+2. Recreate admin/counsellors in **Authentication → Users**.
+3. Recreate the two students through the app's **Register** screen.
+4. Run `seed_demo.sql`.
+
+Full steps: [SETUP_GUIDE §9.16](docs/SETUP_GUIDE.md). Never insert directly into `auth.users` with raw SQL. Until this is repaired, the app's login screen is reachable but role-specific end-to-end testing cannot use the demo accounts.
 
 ---
 
@@ -75,8 +82,9 @@ Follow [docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md) in order:
 1. Create the Supabase project and configure email auth.
 2. Run `supabase/schema.sql`.
 3. Run `supabase/seed_reference.sql`.
-4. Create the five demo users **through Authentication → Users** (auto-confirm), not raw SQL.
-5. Run `supabase/seed_demo.sql`.
+4. Create the **admin and two counsellors** through **Authentication → Users** (auto-confirm), not raw SQL.
+5. Build/run the app, then register Aina and Faris through the **Register** screen so their required metadata reaches the Auth trigger.
+6. Run `supabase/seed_demo.sql`.
 
 ### 2. Android
 
@@ -130,7 +138,8 @@ app/src/main/java/com/example/counselling/
   feature/auth/         login, registration, splash, configuration error
   feature/home/         role dashboards, next appointment, admin aggregate stats
   feature/student/      Module 1 profile, staff student directory
-  feature/appointment/  Module 2 booking, match, slots, reschedule, cancellation, admin view
+  feature/appointment/  Module 2 booking, match, slots, student reschedule/cancel,
+                        counsellor decline/emergency cancel/reschedule, admin read-only view
   feature/counsellor/   Module 3 directory and availability
   feature/records/      Module 4 private records, triage, follow-up, student summaries
   feature/resource/     Module 5 resource library and self-check

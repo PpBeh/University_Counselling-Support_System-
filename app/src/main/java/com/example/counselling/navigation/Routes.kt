@@ -31,6 +31,7 @@ object Routes {
     const val STUDENT_DIRECTORY = "student_directory"
     const val STUDENT_DETAIL = "student_detail/{studentId}"
     const val RESCHEDULE = "reschedule/{appointmentId}"
+    const val COUNSELLOR_RESCHEDULE = "counsellor_reschedule/{appointmentId}"
 
     const val COUNSELLOR_DETAIL = "counsellor_detail/{counsellorId}"
     const val COUNSELLOR_FORM = "counsellor_form?counsellorId={counsellorId}"
@@ -44,6 +45,7 @@ object Routes {
 
     fun studentDetail(studentId: String) = "student_detail/$studentId"
     fun reschedule(appointmentId: String) = "reschedule/$appointmentId"
+    fun counsellorReschedule(appointmentId: String) = "counsellor_reschedule/$appointmentId"
     fun bookAppointment(concern: String? = null): String =
         if (concern == null) "book_appointment" else "book_appointment?concern=${Uri.encode(concern)}"
     fun resourceForm(resourceId: String? = null): String =

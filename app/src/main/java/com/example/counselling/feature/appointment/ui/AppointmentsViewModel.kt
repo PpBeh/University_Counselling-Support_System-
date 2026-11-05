@@ -85,6 +85,20 @@ class AppointmentsViewModel(
         }
     }
 
+    fun declineBooking(appointmentId: String) {
+        if (_uiState.value.isMutating) return
+        performMutation(appointmentId, "Booking declined and slot released.") {
+            repository.updateStatus(appointmentId, "cancelled")
+        }
+    }
+
+    fun cancelConfirmedSession(appointmentId: String) {
+        if (_uiState.value.isMutating) return
+        performMutation(appointmentId, "Session cancelled and slot released.") {
+            repository.updateStatus(appointmentId, "cancelled")
+        }
+    }
+
     fun updateStatus(appointmentId: String, newStatus: String) {
         if (_uiState.value.isMutating) return
         val message = when (newStatus) {

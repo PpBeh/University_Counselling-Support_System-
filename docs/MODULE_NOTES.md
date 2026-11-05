@@ -64,8 +64,8 @@ Shared Supabase configuration is in tracked `supabase.properties` (publishable U
 
 - `StudentAppointmentsScreen`: Upcoming / Past / Cancelled tabs, status chips, pull-to-refresh, cancel/reschedule actions.
 - `BookAppointmentScreen` + `BookAppointmentViewModel`: concern selection → Smart Match → slot selection → mode/note → RPC.
-- `RescheduleScreen` + `RescheduleViewModel`: same-counsellor free slots, 12-hour client check.
-- `CounsellorScheduleScreen`: own appointments, Upcoming/This week/All + status filters, confirm/complete/no-show.
+- `RescheduleScreen` + `RescheduleViewModel`: same-counsellor free slots; students get the 12-hour client check, counsellors can reschedule a confirmed session without that notice rule for emergencies.
+- `CounsellorScheduleScreen`: own appointments, Upcoming/This week/All + status filters; confirm/decline pending, complete/no-show, emergency cancel and reschedule confirmed.
 - `AdminAppointmentsScreen`: all appointments, read-only, no write controls.
 - `AppointmentCard`: shared role-aware summary card and Follow-up badge.
 - Home shows the student's real next appointment.
@@ -74,7 +74,8 @@ Shared Supabase configuration is in tracked `supabase.properties` (publishable U
 
 - Tables: `appointments`, `availability_slots`, `counsellors`, `profiles`.
 - View: `available_slots_view` (hides booked slots, exposes only public counsellor/slot data).
-- RPCs: `book_appointment`, `reschedule_appointment`, `cancel_appointment`, `update_appointment_status`.
+- RPCs: `book_appointment`, `reschedule_appointment`, `counsellor_reschedule_appointment`, `cancel_appointment`, `update_appointment_status`.
+- Migration for existing projects: `supabase/migrations/20261104_counsellor_session_actions.sql`.
 
 **Business rules**
 
@@ -82,9 +83,14 @@ Shared Supabase configuration is in tracked `supabase.properties` (publishable U
 - No overlapping active student appointments.
 - One active appointment per slot (partial unique index).
 - Slots must be in the future and belong to an active counsellor.
-- Reschedule is allowed only at least 12 hours before the current session and only with the same counsellor.
-- Status changes are restricted to counsellor-owned bookings and valid forward transitions.
+- Student reschedule is allowed only at least 12 hours before the current session and only with the same counsellor.
+- Counsellor emergency reschedule is allowed for a confirmed session before it starts, to another free slot with the same counsellor; the student's no-overlap rule still applies and the status remains confirmed.
+- Counsellor status changes:
+  - pending → confirmed or cancelled (decline)
+  - confirmed → completed, no_show or cancelled (emergency)
+  - cancellation/reschedule is blocked once the slot has started.
 - Admins can read every appointment but have no write policy or UI actions.
+- There is no push-notification channel: a student sees a counsellor decline/cancel/reschedule when the list is refreshed or reopened. Both decline and emergency cancellation use the existing `cancelled` status and do not store a reason.
 
 **Unique Feature 1 — Smart Counsellor Match**
 

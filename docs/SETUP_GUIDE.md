@@ -12,9 +12,12 @@ This guide takes a fresh Supabase project to a working demo database, then expla
 
 ```text
 supabase/
-  schema.sql           # tables, constraints, RLS, views, triggers, RPCs
+  schema.sql            # tables, constraints, RLS, views, triggers, RPCs
   seed_reference.sql    # admin whitelist, counsellors, resources, future slots
   seed_demo.sql         # demo appointments, records, enquiries, feedback
+  reset_demo_auth.sql   # demo-only Auth recovery; destructive, see §9.16
+  migrations/
+    20261104_counsellor_session_actions.sql  # existing-project emergency actions migration
 docs/
   SETUP_GUIDE.md        # this file
   DATA_DICTIONARY.md
@@ -140,6 +143,11 @@ order by table_name;
 ```
 
 When `seed_demo.sql` has not run, `trg_availability_slot_guard` must be **enabled** (`O` or `true`, depending on the display). If it is disabled later, see Troubleshooting.
+
+> **Already applied an older schema?** Run
+> [`supabase/migrations/20261104_counsellor_session_actions.sql`](../supabase/migrations/20261104_counsellor_session_actions.sql)
+> once to add counsellor decline / emergency cancel / confirmed-session reschedule RPCs.
+> A fresh run of `schema.sql` already includes them.
 
 ### 5.2 `supabase/seed_reference.sql` — second, before users
 
@@ -437,6 +445,7 @@ Because anonymous enquiries store no identity, the **student must copy and keep*
 ### 9.4 "function ... does not exist" or wrong RPC arguments
 
 - Run the current `schema.sql`; the functions and grants are all created there.
+- If the project already had the older schema, run `supabase/migrations/20261104_counsellor_session_actions.sql` to add `counsellor_reschedule_appointment` and the counsellor decline/cancel transitions.
 - Use the parameter names exactly as documented (e.g. `p_slot_id`, `p_mode`, `p_concern_category`, `p_note`). Supabase RPC parameter names are case-sensitive in the JSON request.
 - Check the function list:
   ```sql
@@ -576,18 +585,70 @@ There is no identity linkage to recover it by design. The counsellor can see the
 
 Intentional. Admin only has aggregate counts (`admin_dashboard_stats()`); private notes are counsellor-only. Do not "fix" this by adding an admin policy.
 
-### 9.16 Demo sign-in returns HTTP 500 "Database error querying schema"
+### 9.16 Demo Auth rows are broken: login 500, delete errors, create errors
 
-If every known demo email fails this way while an unknown email returns the normal `400 invalid_credentials`, GoTrue is working but the stored demo Auth rows are malformed. This happens when accounts are inserted directly into `auth.users` with raw SQL instead of being created through Supabase Auth.
+Symptoms:
 
-**Do not insert into `auth.users` directly.** Recreate the affected demo accounts:
+- Known demo email → `500 Database error querying schema`; unknown email → normal `400 invalid_credentials`.
+- Deleting a demo user in the Dashboard → generic “Database loading error”.
+- Creating a user in the Dashboard → “Database error creating user”.
 
-1. In **Authentication → Users**, delete the five malformed demo users. This cascades their `profiles` rows and linked demo appointments.
-2. Recreate each user with **Add user**, **Auto Confirm User** enabled and password `Demo@12345`, following Step 5.3. Include the student metadata for Aina and Faris.
-3. Re-run `seed_reference.sql`, then `seed_demo.sql`, so the counsellor links, student fields and demo appointments are restored.
-4. Sign in again from the app.
+There are two separate causes:
 
-If an unknown email *also* returns HTTP 500, the problem is at the project/Auth level rather than one user row: check **Project Settings → General** for a paused project, review **Logs → Auth**, and contact Supabase support if the database is unavailable.
+1. **The stored demo Auth rows were inserted with raw SQL** and are malformed for GoTrue login.
+2. **Deleting Auth users is blocked by restrictive app foreign keys**:
+   - `profiles` cascades from `auth.users`, but `appointments.student_id`, `session_records.student_id` and `feedback.student_id` use `ON DELETE RESTRICT`.
+   - The Dashboard cannot clear those dependencies, so it shows a generic loading error.
+   - Separately, creating a **student** directly in the Dashboard fails unless student metadata is supplied: the `handle_new_user` trigger requires `full_name`, `student_id`, `programme`, `phone` and `preferred_session_mode`. “Database error creating user” is the generic Auth wrapper for that trigger failure.
+
+**Do not insert into `auth.users` with SQL.** Recover the current demo project in this order:
+
+#### A. Clear the blocked dependencies and malformed Auth rows
+
+Run the full contents of [`supabase/reset_demo_auth.sql`](../supabase/reset_demo_auth.sql) in the Supabase SQL Editor.
+
+- It is **demo-only and destructive**: it clears all demo appointments, session records, feedback and enquiries, then removes the five demo Auth users.
+- It retains `admin_whitelist`, `counsellors`, `resources` and availability slots, so the reference seed remains useful.
+- It runs in one transaction; if a dependency is still blocked, everything rolls back.
+- If the script itself errors at the Auth deletion step, do not fight the Auth schema. Use a **fresh Supabase project** (Option B).
+
+#### B. Recreate staff accounts in the Dashboard
+
+In **Authentication → Users → Add user**, auto-confirm and password `Demo@12345`:
+
+- `admin@university.edu.my`
+- `counsellor.aisyah@university.edu.my`
+- `counsellor.daniel@university.edu.my`
+
+Staff do not need student metadata. If **these** creations also fail with “Database error creating user”, the Auth trigger/schema is damaged — create a fresh project rather than patching `auth.users`.
+
+#### C. Recreate the two students through the app
+
+The safest path is the app's **Register** screen. It supplies the metadata the trigger requires:
+
+- `student.aina@student.university.edu.my` / `Demo@12345`
+  - Aina Zulaikha, `DAMCS2401`, Diploma in Computer Science, `012-3456789`, in person
+- `student.faris@student.university.edu.my` / `Demo@12345`
+  - Muhammad Faris, `DAMCS2402`, Diploma in Information Technology, `+60123456789`, online
+
+Sign out between registrations. Turn **Confirm email OFF** first so the app receives an immediate session. If your Dashboard has a metadata JSON box, you may create them there instead with the same values.
+
+#### D. Restore demo data
+
+Run `supabase/seed_demo.sql` again. It restores demo appointments, records, enquiries and feedback. Re-run `seed_reference.sql` too if the four-week availability window has passed.
+
+#### Option B — Fresh project (recommended if creation still fails)
+
+The current project has no production data. A fresh project is the cleanest recovery:
+
+1. Create a new Supabase project.
+2. Run `schema.sql`, then `seed_reference.sql`.
+3. Create admin/counsellors in the Dashboard.
+4. Register Aina/Faris from the app.
+5. Run `seed_demo.sql`.
+6. Update the URL/key in `supabase.properties` (and `local.properties` if using a local override), then rebuild.
+
+If an unknown email *also* returns HTTP 500, check **Project Settings → General** for a paused project, review **Logs → Auth**, and contact Supabase support if the database is unavailable.
 
 ---
 
@@ -598,7 +659,7 @@ If an unknown email *also* returns HTTP 500, the problem is at the project/Auth 
 3. Try booking the same slot with a second student/Faris: friendly "just booked" message. Try a third active booking for Aina: max 2 message.
 4. Aina reschedules within 12 hours of a current appointment: blocked. Use a slot more than 12 hours away for success.
 5. Aina cancels an appointment; the slot returns to the catalogue.
-6. **Counsellor Aisyah** signs in. Schedule shows her appointments. Confirm a pending one, then mark a confirmed one completed.
+6. **Counsellor Aisyah** signs in. Schedule shows her appointments. Confirm a pending one; decline another pending request; cancel one confirmed session for an emergency; reschedule a confirmed session; then mark a confirmed one completed.
 7. Aisyah creates a session record for a completed appointment; review private/public fields, risk and follow-up due. Open **Records**; the Triage board shows due dates. Schedule a follow-up from a card; sign in to the student account to see the Follow-up tag.
 8. Aisyah opens **Enquiries**, filters Open, replies to `ENQ-DEMO01`/Aina's enquiry, attaches a resource, sets Answered.
 9. **Michael's Module 5**: counsellor/admin creates/edits a resource and toggles publish. Student sees only published items.
@@ -825,6 +886,10 @@ Use one row per test in your report. The "Expected result" column is the pass cr
 | M2-14 | Cancel and release | Student cancels a confirmed/upcoming appointment | Status cancelled; removed from Upcoming; slot appears in available slots again; confirmation dialog used |
 | M2-15 | Admin read-only | Admin → Home appointment list | All appointments visible; no edit/cancel controls; direct write denied |
 | M2-16 | Follow-up tag | Student views an appointment created via the triage board | Follow-up badge/tag shown (Demo Aina) |
+| M2-17 | Counsellor declines pending | Counsellor → Schedule → pending request → Decline booking → confirm | Status cancelled; slot released; student sees the request in Cancelled; success Snackbar |
+| M2-18 | Counsellor cancels confirmed | Counsellor → Schedule → confirmed session → Cancel session → confirm | Emergency cancellation succeeds before the start; slot released; student sees Cancelled |
+| M2-19 | Counsellor reschedules confirmed | Counsellor → Schedule → confirmed session → Reschedule → choose a future free slot of their own | Status stays confirmed; original slot released; student sees the new time; no 12-hour student restriction applies |
+| M2-20 | Counsellor action after start | Try declining/cancelling/rescheduling after the session start | Blocked with a friendly "already started" message; status unchanged |
 
 ### Module 3 — Counsellor & Availability Management (Jeremy)
 
@@ -950,3 +1015,5 @@ If you need a clean run:
 | Safe student summaries | `public.student_session_summaries` |
 | Available booking catalogue | `public.available_slots_view` |
 | Admin aggregate stats | `public.admin_dashboard_stats()` |
+| Counsellor emergency actions | `update_appointment_status` (decline/cancel) + `counsellor_reschedule_appointment` |
+| Existing project migration | `supabase/migrations/20261104_counsellor_session_actions.sql` |

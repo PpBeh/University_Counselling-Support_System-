@@ -45,7 +45,9 @@ fun AppointmentCard(
     isBusy: Boolean = false,
     onReschedule: (() -> Unit)? = null,
     onCancel: (() -> Unit)? = null,
+    cancelLabel: String = "Cancel",
     onConfirm: (() -> Unit)? = null,
+    onDecline: (() -> Unit)? = null,
     onComplete: (() -> Unit)? = null,
     onNoShow: (() -> Unit)? = null,
 ) {
@@ -145,38 +147,56 @@ fun AppointmentCard(
                 }
             }
 
-            val hasActions = onReschedule != null || onCancel != null ||
-                onConfirm != null || onComplete != null || onNoShow != null
+            val hasTimeActions = onReschedule != null || onCancel != null
+            val hasSessionActions = onConfirm != null || onDecline != null ||
+                onComplete != null || onNoShow != null
+            val hasActions = hasTimeActions || hasSessionActions
             if (hasActions) {
                 Spacer(Modifier.height(8.dp))
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    if (onReschedule != null) {
-                        TextButton(onClick = onReschedule, enabled = !isBusy) {
-                            Text("Reschedule")
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    if (hasTimeActions) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                        ) {
+                            if (onReschedule != null) {
+                                TextButton(onClick = onReschedule, enabled = !isBusy) {
+                                    Text("Reschedule")
+                                }
+                            }
+                            if (onCancel != null) {
+                                TextButton(onClick = onCancel, enabled = !isBusy) {
+                                    Text(cancelLabel, color = MaterialTheme.colorScheme.error)
+                                }
+                            }
                         }
                     }
-                    if (onCancel != null) {
-                        TextButton(onClick = onCancel, enabled = !isBusy) {
-                            Text("Cancel", color = MaterialTheme.colorScheme.error)
-                        }
-                    }
-                    if (onConfirm != null) {
-                        TextButton(onClick = onConfirm, enabled = !isBusy) {
-                            Text("Confirm")
-                        }
-                    }
-                    if (onComplete != null) {
-                        TextButton(onClick = onComplete, enabled = !isBusy) {
-                            Text("Complete")
-                        }
-                    }
-                    if (onNoShow != null) {
-                        TextButton(onClick = onNoShow, enabled = !isBusy) {
-                            Text("No-show", color = MaterialTheme.colorScheme.error)
+                    if (hasSessionActions) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                        ) {
+                            if (onConfirm != null) {
+                                TextButton(onClick = onConfirm, enabled = !isBusy) {
+                                    Text("Confirm")
+                                }
+                            }
+                            if (onDecline != null) {
+                                TextButton(onClick = onDecline, enabled = !isBusy) {
+                                    Text("Decline", color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                            if (onComplete != null) {
+                                TextButton(onClick = onComplete, enabled = !isBusy) {
+                                    Text("Complete")
+                                }
+                            }
+                            if (onNoShow != null) {
+                                TextButton(onClick = onNoShow, enabled = !isBusy) {
+                                    Text("No-show", color = MaterialTheme.colorScheme.error)
+                                }
+                            }
                         }
                     }
                 }

@@ -301,6 +301,19 @@ private fun MainApp(
                 )
             }
 
+            composable(
+                route = Routes.COUNSELLOR_RESCHEDULE,
+                arguments = listOf(navArgument("appointmentId") { type = NavType.StringType }),
+            ) { entry ->
+                val id = entry.arguments?.getString("appointmentId").orEmpty()
+                RescheduleRoute(
+                    appointmentId = id,
+                    repository = appointmentRepository,
+                    isCounsellor = true,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
             composable(Routes.ENQUIRIES) {
                 if (role == UserRole.COUNSELLOR) {
                     CounsellorInboxRoute(
@@ -373,6 +386,9 @@ private fun MainApp(
                     repository = appointmentRepository,
                     onManageAvailability = {
                         navController.navigateOnce(Routes.MY_AVAILABILITY)
+                    },
+                    onReschedule = { id ->
+                        navController.navigateOnce(Routes.counsellorReschedule(id))
                     },
                 )
             }

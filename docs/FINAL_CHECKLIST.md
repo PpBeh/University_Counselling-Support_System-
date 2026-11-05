@@ -80,7 +80,7 @@ Test suites:
 2. Run SQL in this exact order:
    1. `supabase/schema.sql`
    2. `supabase/seed_reference.sql`
-   3. Create Auth users **through Authentication → Users**, auto-confirmed, with metadata from `SETUP_GUIDE.md` Step 5.3.
+   3. Create **admin/counsellors** through Authentication → Users (auto-confirmed). Create **Aina/Faris** through the app Register screen, or use the Dashboard metadata JSON from `SETUP_GUIDE.md` Step 5.3.
    4. `supabase/seed_demo.sql`
 3. Confirm `supabase.properties` URL and publishable key belong to this project.
 4. Turn **Confirm email** off for the demo.
@@ -89,18 +89,27 @@ Test suites:
 
 ### Demo Auth recovery (required now)
 
-The current demo rows were inserted with raw SQL. Symptom:
+The current demo rows were inserted with raw SQL. Symptoms:
 
 - unknown email → `400 invalid_credentials`
 - known demo email → `500 Database error querying schema`
+- Dashboard delete → “Database loading error”
+- Dashboard create → “Database error creating user”
+
+There are two causes:
+
+1. Malformed raw-SQL Auth rows.
+2. Dashboard deletes are blocked by restrictive FKs from appointments, session records and feedback. Creating a student from the Dashboard also fails because the Auth trigger requires student metadata.
 
 Fix:
 
-1. In **Authentication → Users**, delete the affected demo users.
-2. Recreate them with **Add user**, Auto Confirm and password `Demo@12345`.
-3. Use the exact student metadata in `SETUP_GUIDE.md` Step 5.3.
-4. Re-run `seed_reference.sql` and `seed_demo.sql` so linked counsellors, slots and demo records are restored.
+1. Run [`supabase/reset_demo_auth.sql`](../supabase/reset_demo_auth.sql) in the SQL Editor. This is demo-only and destructive; it clears dependent demo app data and the five Auth users. It rolls back on any error.
+2. Recreate admin and counsellors through **Authentication → Users**, auto-confirmed.
+3. Recreate Aina and Faris through the app's **Register** screen with the exact metadata in `SETUP_GUIDE.md` Step 5.3. Do not create students in the Dashboard unless it offers a metadata JSON box.
+4. Run `seed_demo.sql`.
 5. Sign in again.
+
+If creating even staff users still fails, the Auth trigger/schema is damaged. Create a fresh Supabase project and follow `SETUP_GUIDE.md` from Step 3 instead of modifying `auth.users`.
 
 Full details: `SETUP_GUIDE.md` §9.16.
 
@@ -129,7 +138,7 @@ Full details: `SETUP_GUIDE.md` §9.16.
 ### Counsellor (Aisyah)
 
 - [ ] Sign in.
-- [ ] Schedule: confirm a pending appointment; complete/no-show; Upcoming/This week/All filters.
+- [ ] Schedule: confirm a pending appointment; decline another pending request; cancel a confirmed session for an emergency; reschedule a confirmed session; complete/no-show; Upcoming/This week/All filters.
 - [ ] Manage my availability: add a single slot, repeat 3 weeks, edit/delete free slot; booked slot is locked.
 - [ ] Records: create a record for a completed appointment; validation for short notes/risk/follow-up.
 - [ ] Triage board: Overdue / Due soon / Later and high-risk inclusion.
