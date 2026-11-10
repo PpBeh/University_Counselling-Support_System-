@@ -17,7 +17,8 @@ supabase/
   seed_demo.sql         # demo appointments, records, enquiries, feedback
   reset_demo_auth.sql   # demo-only Auth recovery; destructive, see §9.16
   migrations/
-    20261104_counsellor_session_actions.sql  # existing-project emergency actions migration
+    20261104_counsellor_session_actions.sql    # existing-project emergency actions
+    20261110_session_record_hard_delete.sql    # existing-project archived-record delete
 docs/
   SETUP_GUIDE.md        # this file
   DATA_DICTIONARY.md
@@ -144,10 +145,11 @@ order by table_name;
 
 When `seed_demo.sql` has not run, `trg_availability_slot_guard` must be **enabled** (`O` or `true`, depending on the display). If it is disabled later, see Troubleshooting.
 
-> **Already applied an older schema?** Run
-> [`supabase/migrations/20261104_counsellor_session_actions.sql`](../supabase/migrations/20261104_counsellor_session_actions.sql)
-> once to add counsellor decline / emergency cancel / confirmed-session reschedule RPCs.
-> A fresh run of `schema.sql` already includes them.
+> **Already applied an older schema?** Run both migrations once, in this order:
+> 1. [`supabase/migrations/20261104_counsellor_session_actions.sql`](../supabase/migrations/20261104_counsellor_session_actions.sql) — counsellor decline, emergency cancel/reschedule.
+> 2. [`supabase/migrations/20261110_session_record_hard_delete.sql`](../supabase/migrations/20261110_session_record_hard_delete.sql) — delete an archived session record.
+>
+> A fresh run of `schema.sql` already includes both.
 
 ### 5.2 `supabase/seed_reference.sql` — second, before users
 
@@ -445,7 +447,9 @@ Because anonymous enquiries store no identity, the **student must copy and keep*
 ### 9.4 "function ... does not exist" or wrong RPC arguments
 
 - Run the current `schema.sql`; the functions and grants are all created there.
-- If the project already had the older schema, run `supabase/migrations/20261104_counsellor_session_actions.sql` to add `counsellor_reschedule_appointment` and the counsellor decline/cancel transitions.
+- If the project already had the older schema, run the migrations in `supabase/migrations/` in date order:
+  1. `20261104_counsellor_session_actions.sql` — counsellor decline/cancel/reschedule.
+  2. `20261110_session_record_hard_delete.sql` — delete an archived session record.
 - Use the parameter names exactly as documented (e.g. `p_slot_id`, `p_mode`, `p_concern_category`, `p_note`). Supabase RPC parameter names are case-sensitive in the JSON request.
 - Check the function list:
   ```sql
@@ -650,6 +654,50 @@ The current project has no production data. A fresh project is the cleanest reco
 
 If an unknown email *also* returns HTTP 500, check **Project Settings → General** for a paused project, review **Logs → Auth**, and contact Supabase support if the database is unavailable.
 
+### 9.17 Student cannot rate a completed session
+
+The database only accepts feedback when **all** of these are true:
+
+- the appointment status is `completed`
+- the appointment belongs to the signed-in student
+- no feedback already exists for that appointment
+
+In the app, use **Appointments → Past**, then either:
+
+- the **Rate session** button on the completed appointment card, or
+- the **Rate a session** link at the top of the Past tab.
+
+The latest build also refreshes this screen when it resumes, so a session completed by the counsellor while the student app was open should appear after a refresh.
+
+If the button is missing, install the latest APK. If tapping Rate fails with a Snackbar, check the backend grants and policies:
+
+```sql
+select polname, cmd
+from pg_policies
+where schemaname = 'public' and tablename = 'feedback'
+order by polname;
+
+select grantee, privilege_type
+from information_schema.role_table_grants
+where table_schema = 'public'
+  and table_name = 'feedback'
+  and grantee = 'authenticated'
+order by privilege_type;
+
+select tgname
+from pg_trigger
+where tgrelid = 'public.feedback'::regclass
+  and not tgisinternal;
+```
+
+Expected:
+
+- policies for student select, counsellor select, student insert and student delete
+- `SELECT`, `INSERT`, `DELETE` grants for `authenticated`
+- trigger `trg_feedback_prepare`
+
+If any are missing, re-run `schema.sql` (it recreates policies, grants, functions and triggers without dropping the application tables) or apply the relevant feedback block. Existing feedback rows for a completed session cause the friendly “already rated” message; the student must remove their rating before rating again.
+
 ---
 
 ## 10. Demo walkthrough (suggested order)
@@ -660,7 +708,7 @@ If an unknown email *also* returns HTTP 500, check **Project Settings → Genera
 4. Aina reschedules within 12 hours of a current appointment: blocked. Use a slot more than 12 hours away for success.
 5. Aina cancels an appointment; the slot returns to the catalogue.
 6. **Counsellor Aisyah** signs in. Schedule shows her appointments. Confirm a pending one; decline another pending request; cancel one confirmed session for an emergency; reschedule a confirmed session; then mark a confirmed one completed.
-7. Aisyah creates a session record for a completed appointment; review private/public fields, risk and follow-up due. Open **Records**; the Triage board shows due dates. Schedule a follow-up from a card; sign in to the student account to see the Follow-up tag.
+7. Aisyah creates a session record for a completed appointment; review private/public fields, risk and follow-up due. Open **Records**; the Triage board shows due dates. Archive the record, then **Delete forever** it. Schedule a follow-up from a card; sign in to the student account to see the Follow-up tag.
 8. Aisyah opens **Enquiries**, filters Open, replies to `ENQ-DEMO01`/Aina's enquiry, attaches a resource, sets Answered.
 9. **Michael's Module 5**: counsellor/admin creates/edits a resource and toggles publish. Student sees only published items.
 10. Students rate a completed session (1–5 + comment), see their feedback, delete it, rate again.
@@ -924,13 +972,15 @@ Use one row per test in your report. The "Expected result" column is the pass cr
 | M4-06 | One record per appointment | Try creating a second record for the same completed appointment | Friendly duplicate message; unique constraint remains |
 | M4-07 | Edit within 7 days | Change summary/risk/follow-up before 7 days | Success; student public summary updates; private notes remain private |
 | M4-08 | Edit after 7 days | On a disposable record, temporarily disable `trg_session_record_update` in SQL, set `created_at = now() - interval '8 days'`, re-enable the trigger, then edit content as its counsellor | Rejected with 7-day message; archive still possible |
-| M4-09 | Archive | Archive a record, toggle "show archived" | Record hidden by default, visible with toggle; student view no longer shows it; no hard delete |
+| M4-09 | Archive | Archive a record, toggle "show archived" | Record hidden by default, visible with toggle; student view no longer shows it; hard-delete still requires confirmation |
 | M4-10 | Student privacy | Student views session history | Only public summaries via the safe view; no private notes or risk level |
 | M4-11 | Admin privacy | Admin views dashboard | No notes or individual records; aggregate counts only |
 | M4-12 | Counsellor scope | Counsellor views records | Only their own records; no other counsellor's records |
 | M4-13 | Triage board | Counsellor → Records → Triage board | High-risk or follow-up records in Overdue / Due soon / Later, sorted by due date |
 | M4-14 | Schedule follow-up | Tap "Schedule follow-up", choose one of the counsellor's free slots | Pending appointment created, linked via `follow_up_of`; student sees Follow-up tag; max/overlap rules still apply |
 | M4-15 | Triage without available slots | No free slot for the counsellor | Empty state explains no slots, with retry; no appointment created |
+| M4-16 | Delete archived record | Archive a record → show archived → Delete forever → confirm | Permanently removed; student summary disappears; success Snackbar; appointment remains |
+| M4-17 | Delete unarchived record | Attempt a direct/delete request on a non-archived record | Blocked by RLS + BEFORE DELETE trigger with "Archive this session record before deleting it permanently"; record intact |
 
 ### Module 5 — Self-Help Resource Library (Michael)
 
@@ -1016,4 +1066,5 @@ If you need a clean run:
 | Available booking catalogue | `public.available_slots_view` |
 | Admin aggregate stats | `public.admin_dashboard_stats()` |
 | Counsellor emergency actions | `update_appointment_status` (decline/cancel) + `counsellor_reschedule_appointment` |
-| Existing project migration | `supabase/migrations/20261104_counsellor_session_actions.sql` |
+| Existing project migrations | `supabase/migrations/20261104_counsellor_session_actions.sql`, then `20261110_session_record_hard_delete.sql` |
+| Delete archived record | Counsellor → Records → Show archived → Delete forever |

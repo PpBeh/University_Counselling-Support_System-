@@ -130,6 +130,9 @@ object ErrorMapper {
             "archived session records" in raw ->
                 "Archived session records cannot be used to schedule follow-ups."
 
+            "archive this session record before deleting" in raw ->
+                "Archive the session record before deleting it permanently."
+
             "student already has 2 active" in raw ->
                 "This student already has 2 active upcoming appointments."
 

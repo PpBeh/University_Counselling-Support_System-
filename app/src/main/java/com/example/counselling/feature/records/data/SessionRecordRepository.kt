@@ -112,6 +112,15 @@ class SessionRecordRepository(
         Result.failure(Exception(ErrorMapper.message(error, "Could not update the archive state.")))
     }
 
+    suspend fun deleteRecord(recordId: String): Result<Unit> = try {
+        supabase.from("session_records").delete {
+            filter { eq("id", recordId) }
+        }
+        Result.success(Unit)
+    } catch (error: Exception) {
+        Result.failure(Exception(ErrorMapper.message(error, "Could not delete the session record.")))
+    }
+
     suspend fun getFreeSlotsForCounsellor(counsellorId: String): Result<List<AvailableSlotRow>> = try {
         val slots = supabase
             .from("available_slots_view")

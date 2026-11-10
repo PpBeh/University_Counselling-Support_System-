@@ -143,7 +143,7 @@ Full details: `SETUP_GUIDE.md` §9.16.
 - [ ] Records: create a record for a completed appointment; validation for short notes/risk/follow-up.
 - [ ] Triage board: Overdue / Due soon / Later and high-risk inclusion.
 - [ ] Schedule follow-up using own free slot; student later sees Follow-up tag.
-- [ ] Archive/restore record; 7-day read-only rule.
+- [ ] Archive/restore record; 7-day read-only rule; permanent delete only after archive and confirmation.
 - [ ] Enquiries: filter status, reply and attach a published resource; answered without reply is blocked.
 - [ ] View session feedback.
 - [ ] Student directory search from Home.

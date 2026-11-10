@@ -162,6 +162,7 @@ Shared Supabase configuration is in tracked `supabase.properties` (publishable U
 - Follow-up-needed requires a future due date.
 - Content edits are allowed for seven days; after that records are read-only for content but can be archived/restored.
 - Archive is a soft delete; students stop seeing archived summaries.
+- The owning counsellor may permanently delete a record only after it is archived. The UI requires a second confirmation, while RLS plus a BEFORE DELETE trigger enforce the archived state in the database.
 - Student summaries contain no private notes, risk level or ownership internals.
 
 **Unique Feature 2 — Urgency Triage & Follow-up Board**

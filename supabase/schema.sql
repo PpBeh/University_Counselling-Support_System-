@@ -700,6 +700,27 @@ create trigger trg_session_record_update
 before update on public.session_records
 for each row execute function public.guard_session_record_update();
 
+-- A permanent delete is allowed only after the record has been archived. This
+-- gives the counsellor an explicit two-step action and keeps a record from
+-- disappearing by a single accidental delete.
+create or replace function public.prevent_unarchived_session_record_delete()
+returns trigger
+language plpgsql
+set search_path = public
+as $function$
+begin
+    if not old.is_archived then
+        raise exception 'Archive this session record before deleting it permanently.';
+    end if;
+    return old;
+end;
+$function$;
+
+drop trigger if exists trg_session_record_delete_guard on public.session_records;
+create trigger trg_session_record_delete_guard
+before delete on public.session_records
+for each row execute function public.prevent_unarchived_session_record_delete();
+
 -- ----------------------------------------------------------------------------
 -- Feedback rules
 -- ----------------------------------------------------------------------------
@@ -2156,8 +2177,18 @@ with check (
     and counsellor_id = public.app_counsellor_id()
 );
 
--- No DELETE policy. Delete means archive (is_archived = true).
--- Students use student_session_summaries; admins use admin_dashboard_stats.
+-- The owning counsellor may delete a record permanently only after it has been
+-- archived. The archive requirement is also enforced by a BEFORE DELETE
+-- trigger. Students use the safe summary view; admins have no row-level access.
+drop policy if exists session_records_delete_counsellor_archived on public.session_records;
+create policy session_records_delete_counsellor_archived
+on public.session_records for delete
+to authenticated
+using (
+    public.app_role() = 'counsellor'
+    and counsellor_id = public.app_counsellor_id()
+    and is_archived = true
+);
 
 -- ---------------------------------------------------------------------------
 -- resources
@@ -2362,6 +2393,7 @@ grant insert (appointment_id, private_notes, public_summary, risk_level,
 grant update (private_notes, public_summary, risk_level, follow_up_needed,
               follow_up_due, is_archived)
     on public.session_records to authenticated;
+grant delete on public.session_records to authenticated;
 
 -- Resource library management.
 grant insert (title, description, category, media_type, content_url,

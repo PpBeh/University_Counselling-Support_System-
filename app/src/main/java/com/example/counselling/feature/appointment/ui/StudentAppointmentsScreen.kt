@@ -204,7 +204,7 @@ private fun StudentAppointmentsScreen(
                         Text("Session summaries")
                     }
                     TextButton(onClick = onOpenFeedback) {
-                        Text("Session feedback")
+                        Text("Rate a session")
                     }
                 }
             }
@@ -284,6 +284,11 @@ private fun StudentAppointmentsScreen(
                                     },
                                     onCancel = if (canChange) {
                                         { appointmentToCancel = appointment }
+                                    } else {
+                                        null
+                                    },
+                                    onFeedback = if (appointment.status == "completed") {
+                                        onOpenFeedback
                                     } else {
                                         null
                                     },

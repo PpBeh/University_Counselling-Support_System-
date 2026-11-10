@@ -36,6 +36,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.DateTimeUtils
@@ -70,6 +72,9 @@ fun StudentFeedbackRoute(
 
     LaunchedEffect(Unit) {
         viewModel.messages.collect { snackbarState.showAppMessage(it) }
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.refresh()
     }
 
     StudentFeedbackScreen(
@@ -158,7 +163,7 @@ private fun StudentFeedbackScreen(
                                 CompletedSessionCard(
                                     appointment = appointment,
                                     feedback = feedback,
-                                    isBusy = state.busyFeedbackId == feedback?.id,
+                                    isBusy = feedback != null && state.busyFeedbackId == feedback.id,
                                     onRate = {
                                         ratingTarget = appointment
                                     },

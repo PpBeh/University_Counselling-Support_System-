@@ -217,7 +217,7 @@ Rows are **never written directly through the API**. All writes go through the s
 | `risk_level` | `text` | No | — | CHECK: `low`, `medium`, `high`. Required. |
 | `follow_up_needed` | `boolean` | No | `false` | |
 | `follow_up_due` | `timestamptz` | Yes | — | Must be future when a record is created or its follow-up fields are set. Required when `follow_up_needed = true`. |
-| `is_archived` | `boolean` | No | `false` | Archive replaces hard delete. |
+| `is_archived` | `boolean` | No | `false` | Archive is the first step; an archived record may then be permanently deleted by its owning counsellor. |
 | `created_at` | `timestamptz` | No | `now()` | Forced to `now()` by the insert trigger; drives the 7-day edit window. |
 | `updated_at` | `timestamptz` | No | `now()` | Maintained by `trg_session_records_updated_at`. |
 
@@ -239,6 +239,7 @@ Rows are **never written directly through the API**. All writes go through the s
 |---|---|---|
 | `trg_session_record_prepare` | BEFORE INSERT | Requires the appointment to be `completed`; fills counsellor/student IDs; rejects duplicates; forces `created_at`, `is_archived=false`; requires a future due date when follow-up is needed |
 | `trg_session_record_update` | BEFORE UPDATE | Blocks identity changes; blocks content edits after 7 days; allows archive/unarchive at any time; validates an updated follow-up date |
+| `trg_session_record_delete_guard` | BEFORE DELETE | Requires `is_archived = true` before permanent deletion |
 | `trg_session_records_updated_at` | BEFORE UPDATE | Sets `updated_at` |
 
 ### 3.7 `resources`
@@ -418,7 +419,7 @@ RLS is enabled on every table. `anon` has no access to any application table or 
 | `counsellors` | Read all directory rows | Read all | Read all; insert; update |
 | `availability_slots` | Read all | Read all; insert/update/delete own | Read all; insert/update/delete any |
 | `appointments` | Read own | Read own assigned | Read all (read-only) |
-| `session_records` | **No base-table access**; safe summary view only | Read/insert/update own | **No access**; aggregate counts only via RPC |
+| `session_records` | **No base-table access**; safe summary view only | Read/insert/update own; delete own **archived** records only | **No access**; aggregate counts only via RPC |
 | `resources` | Read published only | Read all; insert/update/delete | Read all; insert/update/delete |
 | `enquiries` | Read own non-anonymous; delete own open; create via RPC | Read all; update reply/status/resource | **No access** |
 | `feedback` | Read/insert/delete own | Read own sessions' ratings | **No base access**; aggregate via stats RPC |
@@ -431,7 +432,7 @@ RLS is enabled on every table. `anon` has no access to any application table or 
 
 - `profiles`: authenticated users can update only `full_name`, `programme`, `phone`, `preferred_session_mode`. Role, student ID, email and active flag are not writable.
 - `enquiries`: counsellors can update only `status`, `reply`, `recommended_resource_id`.
-- `session_records`: update privilege excludes appointment/student/counsellor identity and `created_at`.
+- `session_records`: update privilege excludes appointment/student/counsellor identity and `created_at`; DELETE is limited by RLS to the owning counsellor and archived rows.
 - `counsellors`: `user_id` is not writable through the API; only the Auth trigger can link it.
 - No anonymous (`anon`) grants exist.
 
@@ -463,7 +464,7 @@ RLS is enabled on every table. `anon` has no access to any application table or 
 | Completed-only session records | `prepare_session_record()` trigger |
 | One record per appointment | Unique constraint + trigger |
 | 7-day record editing | `guard_session_record_update()` |
-| Archive instead of delete | RLS has no DELETE policy; app toggles `is_archived` |
+| Archive before permanent delete | `session_records_delete_counsellor_archived` RLS + `trg_session_record_delete_guard` |
 | One rating per completed appointment | Unique constraint + RLS + `prepare_feedback()` |
 | Anonymous enquiry identity is null | `enquiries_identity_consistency` + `submit_enquiry()` |
 | Unique reference codes | Unique constraint + generation loop |

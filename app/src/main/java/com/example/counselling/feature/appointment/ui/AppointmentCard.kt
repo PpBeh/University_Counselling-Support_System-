@@ -50,6 +50,7 @@ fun AppointmentCard(
     onDecline: (() -> Unit)? = null,
     onComplete: (() -> Unit)? = null,
     onNoShow: (() -> Unit)? = null,
+    onFeedback: (() -> Unit)? = null,
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -150,7 +151,7 @@ fun AppointmentCard(
             val hasTimeActions = onReschedule != null || onCancel != null
             val hasSessionActions = onConfirm != null || onDecline != null ||
                 onComplete != null || onNoShow != null
-            val hasActions = hasTimeActions || hasSessionActions
+            val hasActions = hasTimeActions || hasSessionActions || onFeedback != null
             if (hasActions) {
                 Spacer(Modifier.height(8.dp))
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -196,6 +197,16 @@ fun AppointmentCard(
                                 TextButton(onClick = onNoShow, enabled = !isBusy) {
                                     Text("No-show", color = MaterialTheme.colorScheme.error)
                                 }
+                            }
+                        }
+                    }
+                    if (onFeedback != null) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                        ) {
+                            TextButton(onClick = onFeedback, enabled = !isBusy) {
+                                Text("Rate session")
                             }
                         }
                     }

@@ -61,6 +61,7 @@ import com.example.counselling.feature.records.model.TriageBucket
 import com.example.counselling.feature.records.model.triageRecords
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTopBar
+import com.example.counselling.ui.components.ConfirmDialog
 import com.example.counselling.ui.components.EmptyState
 import com.example.counselling.ui.components.ErrorState
 import com.example.counselling.ui.components.LoadingShimmer
@@ -98,6 +99,7 @@ fun SessionRecordsRoute(
         onEditRecord = onEditRecord,
         onScheduleFollowUp = onScheduleFollowUp,
         onArchive = viewModel::setArchived,
+        onDeleteRecord = viewModel::deleteRecord,
         onRefresh = viewModel::refresh,
         onRetry = viewModel::retry,
     )
@@ -112,12 +114,14 @@ private fun SessionRecordsScreen(
     onEditRecord: (String) -> Unit,
     onScheduleFollowUp: (String) -> Unit,
     onArchive: (SessionRecord, Boolean) -> Unit,
+    onDeleteRecord: (SessionRecord) -> Unit,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var showArchived by rememberSaveable { mutableStateOf(false) }
     var recordToView by remember { mutableStateOf<SessionRecord?>(null) }
+    var recordToDelete by remember { mutableStateOf<SessionRecord?>(null) }
     val triage = remember(state.records) { state.records.triageRecords() }
     val visibleRecords = remember(state.records, showArchived) {
         state.records.filter { showArchived || !it.isArchived }
@@ -202,6 +206,7 @@ private fun SessionRecordsScreen(
                         onEditRecord = onEditRecord,
                         onScheduleFollowUp = onScheduleFollowUp,
                         onViewRecord = { recordToView = it },
+                        onDeleteRecord = { recordToDelete = it },
                         onArchive = onArchive,
                     )
                 } else {
@@ -228,6 +233,16 @@ private fun SessionRecordsScreen(
 
     recordToView?.let { record ->
         RecordDetailDialog(record = record, onDismiss = { recordToView = null })
+    }
+
+    recordToDelete?.let { record ->
+        ConfirmDialog(
+            title = "Delete archived record permanently?",
+            message = "This permanently removes ${record.studentName}'s private notes and public summary for this session. It cannot be undone and the student's summary will disappear.",
+            confirmLabel = "Delete forever",
+            onConfirm = { onDeleteRecord(record) },
+            onDismiss = { recordToDelete = null },
+        )
     }
 }
 
@@ -301,6 +316,7 @@ private fun RecordsTab(
     onEditRecord: (String) -> Unit,
     onScheduleFollowUp: (String) -> Unit,
     onViewRecord: (SessionRecord) -> Unit,
+    onDeleteRecord: (SessionRecord) -> Unit,
     onArchive: (SessionRecord, Boolean) -> Unit,
 ) {
     if (state.eligibleAppointments.isEmpty() && records.isEmpty()) {
@@ -359,6 +375,11 @@ private fun RecordsTab(
                     onEdit = { onEditRecord(record.id) },
                     onScheduleFollowUp = { onScheduleFollowUp(record.id) },
                     onArchive = { onArchive(record, !record.isArchived) },
+                    onDelete = if (record.isArchived) {
+                        { onDeleteRecord(record) }
+                    } else {
+                        null
+                    },
                 )
             }
         }
@@ -476,6 +497,7 @@ fun RecordCard(
     onEdit: () -> Unit,
     onScheduleFollowUp: () -> Unit,
     onArchive: () -> Unit,
+    onDelete: (() -> Unit)? = null,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -565,6 +587,11 @@ fun RecordCard(
                 }
                 TextButton(onClick = onArchive, enabled = !isBusy) {
                     Text(if (record.isArchived) "Restore" else "Archive")
+                }
+                if (record.isArchived && onDelete != null) {
+                    TextButton(onClick = onDelete, enabled = !isBusy) {
+                        Text("Delete forever", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         }

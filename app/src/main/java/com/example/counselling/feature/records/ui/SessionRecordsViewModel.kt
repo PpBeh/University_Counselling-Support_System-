@@ -120,6 +120,35 @@ class SessionRecordsViewModel(
         }
     }
 
+    fun deleteRecord(record: SessionRecord) {
+        if (_uiState.value.busyRecordId != null) return
+        if (!record.isArchived) {
+            _messages.trySend(
+                UiMessage(
+                    "Archive the record before deleting it permanently.",
+                    MessageKind.ERROR,
+                ),
+            )
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(busyRecordId = record.id) }
+            recordRepository.deleteRecord(record.id)
+                .onSuccess {
+                    _messages.send(
+                        UiMessage("Archived session record permanently deleted.", MessageKind.SUCCESS),
+                    )
+                    load()
+                }
+                .onFailure {
+                    _messages.send(
+                        UiMessage(it.message ?: "Could not delete the record.", MessageKind.ERROR),
+                    )
+                }
+            _uiState.update { it.copy(busyRecordId = null) }
+        }
+    }
+
     companion object {
         fun factory(
             recordRepository: SessionRecordRepository,
