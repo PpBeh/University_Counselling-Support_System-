@@ -4,6 +4,7 @@ package com.example.counselling.feature.appointment.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,7 +33,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -44,6 +47,7 @@ import com.example.counselling.core.AppConstants
 import com.example.counselling.core.DateTimeUtils
 import com.example.counselling.core.SessionManager
 import com.example.counselling.feature.appointment.domain.AppointmentRepository
+import com.example.counselling.feature.appointment.domain.AvailableSlot
 import com.example.counselling.feature.appointment.domain.CounsellorMatch
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
@@ -118,6 +122,7 @@ fun BookAppointmentRoute(
                 BookingStep.SLOTS -> SlotStep(
                     state = state,
                     onChooseSlot = viewModel::chooseSlot,
+                    onClearSlot = viewModel::clearSlot,
                     onModeChange = viewModel::setMode,
                     onNoteChange = viewModel::setNote,
                     onBook = viewModel::book,
@@ -306,7 +311,7 @@ private fun MatchCard(
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
-                        text = match.specialisationLabels.joinToString(" Â· "),
+                        text = match.specialisationLabels.joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
@@ -373,6 +378,7 @@ private fun MatchCard(
 private fun SlotStep(
     state: BookAppointmentUiState,
     onChooseSlot: (String) -> Unit,
+    onClearSlot: () -> Unit,
     onModeChange: (String) -> Unit,
     onNoteChange: (String) -> Unit,
     onBook: () -> Unit,
@@ -381,6 +387,12 @@ private fun SlotStep(
     val grouped = remember(match) {
         match.slots.groupBy { DateTimeUtils.formatDate(it.startAt) }
     }
+    var selectedDate by remember(match.counsellorId) {
+        mutableStateOf(grouped.keys.firstOrNull())
+    }
+    val activeDate = selectedDate?.takeIf { grouped.containsKey(it) }
+        ?: grouped.keys.firstOrNull()
+    val visibleSlots = grouped[activeDate].orEmpty()
 
     Column(
         modifier = Modifier
@@ -396,31 +408,78 @@ private fun SlotStep(
             modifier = Modifier.padding(top = 8.dp),
         )
         Text(
-            text = "All times are shown in Kuala Lumpur time. Your concern: ${state.concern}.",
+            text = "All times are in Kuala Lumpur time. Your concern: ${state.concern}.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 6.dp, bottom = 16.dp),
         )
 
-        grouped.forEach { (date, slots) ->
-            SectionHeader(title = date)
-            Spacer(Modifier.height(8.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                slots.forEach { slot ->
+        SectionHeader(
+            title = "Choose a date",
+            subtitle = "Step 1 of 2 · pick the day that works for you",
+        )
+        if (grouped.isEmpty()) {
+            InfoCard(
+                title = "No free slots right now",
+                body = "This counsellor has no upcoming free slots. Go back and choose another match.",
+            )
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(top = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                grouped.keys.forEach { date ->
                     FilterChip(
-                        selected = state.selectedSlotId == slot.slotId,
-                        onClick = { onChooseSlot(slot.slotId) },
-                        label = {
-                            Text(
-                                "${DateTimeUtils.formatTime(slot.startAt)} â€“ " +
-                                    DateTimeUtils.formatTime(slot.endAt),
-                            )
+                        selected = date == activeDate,
+                        onClick = {
+                            if (selectedDate != date) {
+                                selectedDate = date
+                                onClearSlot()
+                            }
                         },
-                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(date) },
                     )
                 }
             }
-            Spacer(Modifier.height(14.dp))
+
+            Spacer(Modifier.height(18.dp))
+            SectionHeader(
+                title = "Available times",
+                subtitle = activeDate?.let { "Step 2 of 2 · choose a $it slot" },
+            )
+            Spacer(Modifier.height(10.dp))
+
+            if (visibleSlots.isEmpty()) {
+                InfoCard(
+                    title = "No times on this date",
+                    body = "Choose another date above.",
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    visibleSlots.chunked(2).forEach { rowSlots ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            rowSlots.forEach { slot ->
+                                TimeSlotOption(
+                                    slot = slot,
+                                    selected = state.selectedSlotId == slot.slotId,
+                                    onClick = { onChooseSlot(slot.slotId) },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            if (rowSlots.size == 1) {
+                                Spacer(Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(18.dp))
         }
 
         DropdownField(
@@ -457,6 +516,56 @@ private fun SlotStep(
             loading = state.isBooking,
         )
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun TimeSlotOption(
+    slot: AvailableSlot,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.medium,
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        border = BorderStroke(
+            1.dp,
+            if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.outlineVariant,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = DateTimeUtils.formatTime(slot.startAt),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f),
+                )
+                if (selected) {
+                    Icon(
+                        imageVector = Icons.Outlined.CheckCircle,
+                        contentDescription = "Selected",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(17.dp),
+                    )
+                }
+            }
+            Text(
+                text = "to ${DateTimeUtils.formatTime(slot.endAt)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
     }
 }
 

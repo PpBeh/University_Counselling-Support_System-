@@ -463,3 +463,69 @@ Reference enquiry codes: `ENQ-DEMO01` – `ENQ-DEMO04`.
 Do **not** run `schema.sql` on a project that already contains the old tables.
 For an existing project, use the migration on a copy and verify it. For this new
 empty project, `schema.sql` is correct.
+
+---
+
+## 13. Post-handoff UI fixes — 20 November 2026
+
+These are Android-only fixes; no database change is needed.
+
+### 13.1 Home tab navigation
+
+**Problem:** after opening another top-level page from Home, tapping Home again
+did not return to Home because the bottom-bar navigation restored a saved child
+stack.
+
+**Fix:** [`AppNavGraph.kt`](../app/src/main/java/com/example/counselling/navigation/AppNavGraph.kt)
+now pops directly back to the Home destination for the Home tab. Other tabs keep
+their saved-state behaviour.
+
+### 13.2 Broken time separator
+
+**Problem:** the booking slot label showed `â€“` instead of an en dash on the
+phone, which looked like random symbols.
+
+**Fix:** removed the mojibake from
+[`BookAppointmentScreen.kt`](../app/src/main/java/com/example/counselling/feature/appointment/ui/BookAppointmentScreen.kt)
+and the counsellor specialisation separator. Time labels now render as
+`9:00 AM – 10:00 AM`.
+
+### 13.3 Choose-time redesign
+
+**Problem:** every slot was a full-width chip, so a counsellor with several days
+of slots produced a long, inefficient list.
+
+**Fix:** the booking slot step now has:
+
+1. a horizontally scrollable **date selector**;
+2. a two-column **time grid** for the selected day;
+3. a selected-slot check mark and start/end time;
+4. automatic clearing of the old slot when the student changes date.
+
+Implemented in
+[`BookAppointmentScreen.kt`](../app/src/main/java/com/example/counselling/feature/appointment/ui/BookAppointmentScreen.kt).
+
+### 13.4 Inline appointment feedback
+
+**Problem:** rating a completed session required opening the separate feedback
+screen and then choosing the session again.
+
+**Fix:** the completed appointment card now has **Rate session** directly on the
+card. It opens a rating dialog, submits in place, shows the existing star rating,
+and supports **Update rating** / **Remove** without leaving Appointments.
+
+Changed files:
+
+- [`StudentAppointmentsScreen.kt`](../app/src/main/java/com/example/counselling/feature/appointment/ui/StudentAppointmentsScreen.kt)
+- [`AppointmentsViewModel.kt`](../app/src/main/java/com/example/counselling/feature/appointment/ui/AppointmentsViewModel.kt)
+- [`AppointmentCard.kt`](../app/src/main/java/com/example/counselling/feature/appointment/ui/AppointmentCard.kt)
+- [`AppNavGraph.kt`](../app/src/main/java/com/example/counselling/navigation/AppNavGraph.kt)
+
+The separate Student Feedback screen remains reachable from Enquiries, but it is
+no longer required for normal appointment feedback.
+
+### Verification after fixes
+
+- `:app:assembleDebug` — **BUILD SUCCESSFUL**
+- `:app:testDebugUnitTest` — **54/54 tests pass**
+- No database/migration changes required

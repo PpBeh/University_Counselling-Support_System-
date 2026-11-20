@@ -7,14 +7,22 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.counselling.core.domain.AppointmentStatus
+import com.example.counselling.core.domain.Rating
 import com.example.counselling.core.ui.BaseViewModel
 import com.example.counselling.feature.appointment.domain.Appointment
 import com.example.counselling.feature.appointment.domain.AppointmentRepository
+import com.example.counselling.feature.enquiry.domain.FeedbackRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+data class AppointmentFeedbackUi(
+    val id: String,
+    val rating: Int,
+    val comment: String?,
+)
 
 data class AppointmentsUiState(
     val isLoading: Boolean = true,
@@ -22,6 +30,9 @@ data class AppointmentsUiState(
     val isMutating: Boolean = false,
     val busyAppointmentId: String? = null,
     val appointments: List<Appointment> = emptyList(),
+    val feedback: Map<String, AppointmentFeedbackUi> = emptyMap(),
+    val isSubmittingFeedback: Boolean = false,
+    val deletingFeedbackId: String? = null,
     val error: String? = null,
 )
 
@@ -29,6 +40,7 @@ data class AppointmentsUiState(
 
 class AppointmentsViewModel(
     private val repository: AppointmentRepository,
+    private val feedbackRepository: FeedbackRepository? = null,
 ) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(AppointmentsUiState())
@@ -61,6 +73,7 @@ class AppointmentsViewModel(
                             appointments = appointments,
                         )
                     }
+                    feedbackRepository?.let { loadFeedback(it) }
                 }
                 .onFailure { error ->
                     _uiState.update {
@@ -109,6 +122,65 @@ class AppointmentsViewModel(
         }
     }
 
+    fun submitFeedback(appointmentId: String, rating: Int, comment: String) {
+        val repository = feedbackRepository ?: return
+        if (_uiState.value.isSubmittingFeedback) return
+        val ratingValue = try {
+            Rating.of(rating)
+        } catch (_: Exception) {
+            postError("Choose a rating from 1 to 5 stars.")
+            return
+        }
+        if (comment.length > 500) {
+            postError("Comment must be 500 characters or fewer.")
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSubmittingFeedback = true) }
+            repository.submitFeedback(appointmentId, ratingValue, comment)
+                .onSuccess {
+                    postSuccess("Thank you for your feedback.")
+                    loadFeedback(repository)
+                }
+                .onFailure {
+                    postError(it.message ?: "Could not submit feedback.")
+                }
+            _uiState.update { it.copy(isSubmittingFeedback = false) }
+        }
+    }
+
+    fun deleteFeedback(feedbackId: String) {
+        val repository = feedbackRepository ?: return
+        if (_uiState.value.deletingFeedbackId != null) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(deletingFeedbackId = feedbackId) }
+            repository.deleteFeedback(feedbackId)
+                .onSuccess {
+                    postSuccess("Feedback removed.")
+                    loadFeedback(repository)
+                }
+                .onFailure {
+                    postError(it.message ?: "Could not remove feedback.")
+                }
+            _uiState.update { it.copy(deletingFeedbackId = null) }
+        }
+    }
+
+    private suspend fun loadFeedback(repository: FeedbackRepository) {
+        val feedback = repository.getFeedback().getOrNull().orEmpty()
+        _uiState.update {
+            it.copy(
+                feedback = feedback.associate { item ->
+                    item.appointmentId to AppointmentFeedbackUi(
+                        id = item.id,
+                        rating = item.rating.value,
+                        comment = item.comment,
+                    )
+                },
+            )
+        }
+    }
+
     private fun performMutation(
         appointmentId: String,
         successMessage: String,
@@ -128,8 +200,11 @@ class AppointmentsViewModel(
     }
 
     companion object {
-        fun factory(repository: AppointmentRepository) = viewModelFactory {
-            initializer { AppointmentsViewModel(repository) }
+        fun factory(
+            repository: AppointmentRepository,
+            feedbackRepository: FeedbackRepository? = null,
+        ) = viewModelFactory {
+            initializer { AppointmentsViewModel(repository, feedbackRepository) }
         }
     }
 }

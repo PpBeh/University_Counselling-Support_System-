@@ -96,6 +96,10 @@ class BookAppointmentViewModel(
         _uiState.update { it.copy(selectedSlotId = slotId) }
     }
 
+    fun clearSlot() {
+        _uiState.update { it.copy(selectedSlotId = null) }
+    }
+
     fun setMode(mode: String) {
         _uiState.update { it.copy(mode = mode) }
     }

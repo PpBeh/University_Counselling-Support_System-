@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import com.example.counselling.core.DateTimeUtils
 import com.example.counselling.core.domain.User
 import com.example.counselling.feature.appointment.domain.Appointment
+import com.example.counselling.ui.components.StarRating
 import com.example.counselling.ui.components.StatusChip
 import com.example.counselling.ui.theme.WarningContainer
 import com.example.counselling.ui.theme.WarningAmber
@@ -50,6 +51,8 @@ fun AppointmentCard(
     onComplete: (() -> Unit)? = null,
     onNoShow: (() -> Unit)? = null,
     onFeedback: (() -> Unit)? = null,
+    feedbackRating: Int? = null,
+    onRemoveFeedback: (() -> Unit)? = null,
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -150,10 +153,36 @@ fun AppointmentCard(
                 }
             }
 
+            if (feedbackRating != null) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Your rating",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    StarRating(
+                        rating = feedbackRating,
+                        starSize = 16.dp,
+                        modifier = Modifier.padding(start = 6.dp),
+                    )
+                    Spacer(Modifier.weight(1f))
+                    if (onRemoveFeedback != null) {
+                        TextButton(onClick = onRemoveFeedback, enabled = !isBusy) {
+                            Text("Remove")
+                        }
+                    }
+                }
+            }
+
             val hasTimeActions = onReschedule != null || onCancel != null
             val hasSessionActions = onConfirm != null || onDecline != null ||
                 onComplete != null || onNoShow != null
-            val hasActions = hasTimeActions || hasSessionActions || onFeedback != null
+            val hasActions = hasTimeActions || hasSessionActions ||
+                onFeedback != null || onRemoveFeedback != null
             if (hasActions) {
                 Spacer(Modifier.height(8.dp))
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -208,7 +237,7 @@ fun AppointmentCard(
                             horizontalArrangement = Arrangement.End,
                         ) {
                             TextButton(onClick = onFeedback, enabled = !isBusy) {
-                                Text("Rate session")
+                                Text(if (feedbackRating == null) "Rate session" else "Update rating")
                             }
                         }
                     }

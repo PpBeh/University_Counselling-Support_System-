@@ -19,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
@@ -47,7 +48,9 @@ import com.example.counselling.core.domain.AppointmentStatus
 import com.example.counselling.core.domain.User
 import com.example.counselling.feature.appointment.domain.Appointment
 import com.example.counselling.feature.appointment.domain.AppointmentRepository
+import com.example.counselling.feature.enquiry.domain.FeedbackRepository
 import com.example.counselling.ui.components.AppSnackbarHost
+import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.ConfirmDialog
 import com.example.counselling.ui.components.EmptyState
@@ -55,6 +58,7 @@ import com.example.counselling.ui.components.ErrorState
 import com.example.counselling.ui.components.FilterChipRow
 import com.example.counselling.ui.components.LoadingShimmer
 import com.example.counselling.ui.components.PrimaryButton
+import com.example.counselling.ui.components.StarRating
 import com.example.counselling.ui.components.showAppMessage
 
 private enum class StudentAppointmentTab(val label: String) {
@@ -66,14 +70,14 @@ private enum class StudentAppointmentTab(val label: String) {
 @Composable
 fun StudentAppointmentsRoute(
     repository: AppointmentRepository,
+    feedbackRepository: FeedbackRepository,
     viewer: User,
     onBook: () -> Unit,
     onReschedule: (String) -> Unit,
     onOpenSummaries: () -> Unit,
-    onOpenFeedback: () -> Unit,
 ) {
     val viewModel: AppointmentsViewModel = viewModel(
-        factory = AppointmentsViewModel.factory(repository),
+        factory = AppointmentsViewModel.factory(repository, feedbackRepository),
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarState = remember { SnackbarHostState() }
@@ -94,7 +98,8 @@ fun StudentAppointmentsRoute(
         onBook = onBook,
         onReschedule = onReschedule,
         onOpenSummaries = onOpenSummaries,
-        onOpenFeedback = onOpenFeedback,
+        onSubmitFeedback = viewModel::submitFeedback,
+        onDeleteFeedback = viewModel::deleteFeedback,
         onCancel = viewModel::cancelAppointment,
         onRefresh = viewModel::refresh,
         onRetry = viewModel::retry,
@@ -110,7 +115,8 @@ private fun StudentAppointmentsScreen(
     onBook: () -> Unit,
     onReschedule: (String) -> Unit,
     onOpenSummaries: () -> Unit,
-    onOpenFeedback: () -> Unit,
+    onSubmitFeedback: (String, Int, String) -> Unit,
+    onDeleteFeedback: (String) -> Unit,
     onCancel: (String) -> Unit,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
@@ -118,6 +124,8 @@ private fun StudentAppointmentsScreen(
     var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
     var selectedStatusLabel by rememberSaveable { mutableStateOf("All") }
     var appointmentToCancel by remember { mutableStateOf<Appointment?>(null) }
+    var feedbackTarget by remember { mutableStateOf<Appointment?>(null) }
+    var feedbackToDelete by remember { mutableStateOf<AppointmentFeedbackUi?>(null) }
 
     val tabs = StudentAppointmentTab.entries
     val selectedTab = tabs[selectedTabIndex]
@@ -207,9 +215,6 @@ private fun StudentAppointmentsScreen(
                     TextButton(onClick = onOpenSummaries) {
                         Text("Session summaries")
                     }
-                    TextButton(onClick = onOpenFeedback) {
-                        Text("Rate a session")
-                    }
                 }
             }
 
@@ -277,10 +282,13 @@ private fun StudentAppointmentsScreen(
                                     AppointmentStatus.Pending,
                                     AppointmentStatus.Confirmed,
                                 )
+                                val existingFeedback = state.feedback[appointment.id]
                                 AppointmentCard(
                                     appointment = appointment,
                                     viewer = viewer,
-                                    isBusy = state.isMutating,
+                                    isBusy = state.isMutating ||
+                                        state.isSubmittingFeedback ||
+                                        state.deletingFeedbackId != null,
                                     onReschedule = if (
                                         canChange &&
                                         DateTimeUtils.canReschedule(appointment.slotStart)
@@ -295,9 +303,13 @@ private fun StudentAppointmentsScreen(
                                         null
                                     },
                                     onFeedback = if (appointment.status == AppointmentStatus.Completed) {
-                                        onOpenFeedback
+                                        { feedbackTarget = appointment }
                                     } else {
                                         null
+                                    },
+                                    feedbackRating = existingFeedback?.rating,
+                                    onRemoveFeedback = existingFeedback?.let { feedback ->
+                                        { feedbackToDelete = feedback }
                                     },
                                 )
                             }
@@ -325,6 +337,109 @@ private fun StudentAppointmentsScreen(
             onDismiss = { appointmentToCancel = null },
         )
     }
+
+    feedbackTarget?.let { appointment ->
+        SessionRatingDialog(
+            appointment = appointment,
+            existing = state.feedback[appointment.id],
+            isSubmitting = state.isSubmittingFeedback,
+            onDismiss = { feedbackTarget = null },
+            onSubmit = { rating, comment ->
+                onSubmitFeedback(appointment.id, rating, comment)
+                feedbackTarget = null
+            },
+        )
+    }
+
+    feedbackToDelete?.let { feedback ->
+        ConfirmDialog(
+            title = "Remove your rating?",
+            message = "You can rate this session again afterwards.",
+            confirmLabel = "Remove rating",
+            onConfirm = { onDeleteFeedback(feedback.id) },
+            onDismiss = { feedbackToDelete = null },
+        )
+    }
+}
+
+@Composable
+private fun SessionRatingDialog(
+    appointment: Appointment,
+    existing: AppointmentFeedbackUi?,
+    isSubmitting: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: (Int, String) -> Unit,
+) {
+    var rating by remember(appointment.id, existing?.rating) {
+        mutableStateOf(existing?.rating ?: 0)
+    }
+    var comment by remember(appointment.id, existing?.comment) {
+        mutableStateOf(existing?.comment.orEmpty())
+    }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(if (existing == null) "Rate your session" else "Update your rating")
+        },
+        text = {
+            Column {
+                Text(
+                    text = "${appointment.counsellorName} · " +
+                        DateTimeUtils.formatDate(appointment.slotStart),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = "How was this session?",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                StarRating(
+                    rating = rating,
+                    onRatingChange = {
+                        rating = it
+                        error = null
+                    },
+                    starSize = 36.dp,
+                    modifier = Modifier.padding(vertical = 4.dp),
+                )
+                AppTextField(
+                    value = comment,
+                    onValueChange = {
+                        comment = it
+                        error = null
+                    },
+                    label = "Comment (optional)",
+                    singleLine = false,
+                    maxLines = 3,
+                    error = error,
+                    supportingText = "Maximum 500 characters.",
+                    enabled = !isSubmitting,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    when {
+                        rating !in 1..5 -> error = "Choose a rating from 1 to 5 stars."
+                        comment.length > 500 -> error = "Comment must be 500 characters or fewer."
+                        else -> onSubmit(rating, comment)
+                    }
+                },
+                enabled = !isSubmitting,
+            ) {
+                Text(if (existing == null) "Submit" else "Update")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSubmitting) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 private fun String.toApiStatus(): AppointmentStatus? = when (this) {

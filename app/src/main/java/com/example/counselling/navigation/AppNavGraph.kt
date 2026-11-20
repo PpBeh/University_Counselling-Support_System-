@@ -257,6 +257,7 @@ private fun MainApp(
             composable(Routes.STUDENT_APPOINTMENTS) {
                 StudentAppointmentsRoute(
                     repository = appointmentRepository,
+                    feedbackRepository = feedbackRepository,
                     viewer = user,
                     onBook = { navController.navigateOnce(Routes.bookAppointment()) },
                     onReschedule = { id ->
@@ -264,9 +265,6 @@ private fun MainApp(
                     },
                     onOpenSummaries = {
                         navController.navigateOnce(Routes.STUDENT_SUMMARIES)
-                    },
-                    onOpenFeedback = {
-                        navController.navigateOnce(Routes.STUDENT_FEEDBACK)
                     },
                 )
             }
@@ -598,6 +596,18 @@ private fun MainApp(
 }
 
 private fun NavController.navigateToTab(route: String) {
+    // Home is the graph start destination. Popping directly avoids restoring a
+    // saved child stack on top of Home (which previously left users on the
+    // secondary screen after tapping the Home tab).
+    if (route == Routes.HOME) {
+        if (!popBackStack(Routes.HOME, inclusive = false)) {
+            navigate(Routes.HOME) {
+                launchSingleTop = true
+            }
+        }
+        return
+    }
+
     navigate(route) {
         popUpTo(Routes.HOME) {
             saveState = true
