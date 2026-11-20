@@ -27,8 +27,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.DateTimeUtils
-import com.example.counselling.feature.records.data.SessionRecordRepository
-import com.example.counselling.feature.records.model.StudentSessionSummaryRow
+import com.example.counselling.feature.records.domain.SessionRecordRepository
+import com.example.counselling.feature.records.domain.StudentSessionSummary
 import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.EmptyState
 import com.example.counselling.ui.components.ErrorState
@@ -128,7 +128,7 @@ private fun StudentSummariesScreen(
 }
 
 @Composable
-private fun SummaryCard(summary: StudentSessionSummaryRow) {
+private fun SummaryCard(summary: StudentSessionSummary) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,

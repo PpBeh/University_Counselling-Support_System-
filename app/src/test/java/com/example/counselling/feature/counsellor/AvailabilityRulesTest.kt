@@ -1,13 +1,15 @@
 // Module 3 | Owner: Jeremy
 package com.example.counselling.feature.counsellor
 
-import com.example.counselling.feature.counsellor.model.buildWeeklySlots
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
-import org.junit.Test
+import com.example.counselling.core.domain.DomainException
+import com.example.counselling.core.domain.TimeSlot
+import com.example.counselling.feature.counsellor.domain.WeeklyAvailabilityPattern
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
+import org.junit.Test
 
 class AvailabilityRulesTest {
 
@@ -16,39 +18,34 @@ class AvailabilityRulesTest {
         val start = Instant.parse("2026-11-10T01:00:00Z")
         val end = Instant.parse("2026-11-10T02:00:00Z")
 
-        val slots = buildWeeklySlots(start, end, 3)
+        val slots = WeeklyAvailabilityPattern(TimeSlot.fromStored(start, end), 3).generate()
 
         assertEquals(3, slots.size)
-        assertEquals(7, ChronoUnit.DAYS.between(slots[0].first, slots[1].first))
-        assertEquals(14, ChronoUnit.DAYS.between(slots[0].first, slots[2].first))
-        assertTrue(slots.all { ChronoUnit.MINUTES.between(it.first, it.second) == 60L })
+        assertEquals(7, ChronoUnit.DAYS.between(slots[0].start, slots[1].start))
+        assertEquals(14, ChronoUnit.DAYS.between(slots[0].start, slots[2].start))
+        assertTrue(slots.all { ChronoUnit.MINUTES.between(it.start, it.end) == 60L })
     }
 
     @Test
     fun endBeforeStart_throws() {
-        try {
-            buildWeeklySlots(
+        assertThrows(DomainException::class.java) {
+            TimeSlot.fromStored(
                 Instant.parse("2026-11-10T02:00:00Z"),
                 Instant.parse("2026-11-10T01:00:00Z"),
-                1,
             )
-            fail("Expected an IllegalArgumentException")
-        } catch (_: IllegalArgumentException) {
-            // expected
         }
     }
 
     @Test
     fun zeroWeeks_throws() {
-        try {
-            buildWeeklySlots(
-                Instant.parse("2026-11-10T01:00:00Z"),
-                Instant.parse("2026-11-10T02:00:00Z"),
+        assertThrows(DomainException::class.java) {
+            WeeklyAvailabilityPattern(
+                TimeSlot.fromStored(
+                    Instant.parse("2026-11-10T01:00:00Z"),
+                    Instant.parse("2026-11-10T02:00:00Z"),
+                ),
                 0,
-            )
-            fail("Expected an IllegalArgumentException")
-        } catch (_: IllegalArgumentException) {
-            // expected
+            ).generate()
         }
     }
 }

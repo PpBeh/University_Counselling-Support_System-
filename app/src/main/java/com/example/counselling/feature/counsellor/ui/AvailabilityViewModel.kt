@@ -3,25 +3,23 @@
 // (slots for the selected counsellor).
 package com.example.counselling.feature.counsellor.ui
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.counselling.core.DateTimeUtils
-import com.example.counselling.core.MessageKind
-import com.example.counselling.core.UiMessage
-import com.example.counselling.feature.counsellor.data.CounsellorRepository
-import com.example.counselling.feature.counsellor.model.AvailabilitySlot
-import com.example.counselling.feature.counsellor.model.buildWeeklySlots
-import kotlinx.coroutines.channels.Channel
+import com.example.counselling.core.domain.AvailabilitySlot
+import com.example.counselling.core.domain.TimeSlot
+import com.example.counselling.core.ui.BaseViewModel
+import com.example.counselling.feature.counsellor.domain.CounsellorRepository
+import com.example.counselling.feature.counsellor.domain.WeeklyAvailabilityPattern
+import java.time.Instant
+import java.time.LocalTime
+import java.time.ZoneId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.time.LocalTime
-import java.time.ZoneId
 
 data class AvailabilityUiState(
     val isLoading: Boolean = true,
@@ -45,17 +43,16 @@ data class AvailabilityUiState(
     val deletingSlotId: String? = null,
 )
 
+// OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
+
 class AvailabilityViewModel(
     private val requestedCounsellorId: String?,
-    private val currentUserId: String,
+    private val currentAuthUserId: String,
     private val repository: CounsellorRepository,
-) : ViewModel() {
+) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(AvailabilityUiState())
     val uiState: StateFlow<AvailabilityUiState> = _uiState.asStateFlow()
-
-    private val _messages = Channel<UiMessage>(Channel.BUFFERED)
-    val messages = _messages.receiveAsFlow()
 
     init {
         load()
@@ -84,19 +81,21 @@ class AvailabilityViewModel(
     }
 
     fun openEditForm(slot: AvailabilitySlot) {
-        if (!slot.isEditable) return
-        val parsed = DateTimeUtils.parse(slot.startAt) ?: return
-        val start = parsed.toLocalTime()
-        val end = DateTimeUtils.parse(slot.endAt)?.toLocalTime() ?: start.plusHours(1)
+        if (!slot.isEditable()) return
+        val start = slot.timeSlot.start
+        val end = slot.timeSlot.end
+        val zone = ZoneId.of("Asia/Kuala_Lumpur")
+        val startLocal = start.atZone(zone).toLocalTime()
+        val endLocal = end.atZone(zone).toLocalTime()
         _uiState.update {
             it.copy(
                 showEditor = true,
                 editingSlot = slot,
-                selectedDateMillis = DateTimeUtils.datePickerMillis(parsed.toLocalDate()),
-                startHour = start.hour,
-                startMinute = start.minute,
-                endHour = end.hour,
-                endMinute = end.minute,
+                selectedDateMillis = DateTimeUtils.datePickerMillis(start.atZone(zone).toLocalDate()),
+                startHour = startLocal.hour,
+                startMinute = startLocal.minute,
+                endHour = endLocal.hour,
+                endMinute = endLocal.minute,
                 repeatWeeks = 1,
                 dateError = null,
                 timeError = null,
@@ -130,33 +129,28 @@ class AvailabilityViewModel(
         val state = _uiState.value
         val counsellorId = state.counsellorId
         val date = state.selectedDateMillis
-
         val dateError = if (date == null) "Choose a date." else null
         val startLocal = LocalTime.of(state.startHour, state.startMinute)
         val endLocal = LocalTime.of(state.endHour, state.endMinute)
-        val startAt = date?.let {
-            DateTimeUtils.toApiTimestamp(it, state.startHour, state.startMinute)
+        val startInstant = date?.let {
+            Instant.parse(DateTimeUtils.toApiTimestamp(it, state.startHour, state.startMinute))
         }
-        val endAt = date?.let {
-            DateTimeUtils.toApiTimestamp(it, state.endHour, state.endMinute)
+        val endInstant = date?.let {
+            Instant.parse(DateTimeUtils.toApiTimestamp(it, state.endHour, state.endMinute))
         }
+
         val baseTimeError = when {
-            startAt == null || endAt == null -> "Choose the start and end times."
+            startInstant == null || endInstant == null -> "Choose the start and end times."
             !endLocal.isAfter(startLocal) -> "The end time must be after the start time."
-            DateTimeUtils.isPast(startAt) -> "Availability cannot be created in the past."
+            !startInstant.isAfter(Instant.now()) -> "Availability cannot be created in the past."
             else -> null
         }
-        val startInstant = startAt?.let { DateTimeUtils.parse(it)?.toInstant() }
-        val endInstant = endAt?.let { DateTimeUtils.parse(it)?.toInstant() }
         val overlaps = if (startInstant == null || endInstant == null) {
             false
         } else {
             state.slots.any { existing ->
                 if (existing.id == state.editingSlot?.id) return@any false
-                val existingStart = DateTimeUtils.parse(existing.startAt)?.toInstant()
-                val existingEnd = DateTimeUtils.parse(existing.endAt)?.toInstant()
-                existingStart != null && existingEnd != null &&
-                    startInstant < existingEnd && endInstant > existingStart
+                startInstant < existing.timeSlot.end && endInstant > existing.timeSlot.start
             }
         }
         val timeError = baseTimeError ?: if (overlaps) {
@@ -175,21 +169,21 @@ class AvailabilityViewModel(
         if (counsellorId == null || dateError != null || timeError != null || repeatError != null) {
             return
         }
-        if (state.isSaving || startAt == null || endAt == null) return
+        if (state.isSaving || startInstant == null || endInstant == null) return
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true) }
+            val baseSlot = try {
+                TimeSlot.of(startInstant, endInstant)
+            } catch (error: Exception) {
+                postError(error.message ?: "Choose a valid time.")
+                _uiState.update { it.copy(isSaving = false) }
+                return@launch
+            }
             val result = if (state.editingSlot != null) {
-                repository.updateSlot(state.editingSlot.id, startAt, endAt)
+                repository.updateSlot(state.editingSlot.id, baseSlot)
             } else {
-                val zone = ZoneId.of("Asia/Kuala_Lumpur")
-                val dateValue = DateTimeUtils.localDate(startAt) ?: return@launch
-                val baseStart = dateValue.atTime(state.startHour, state.startMinute)
-                    .atZone(zone).toInstant()
-                val baseEnd = dateValue.atTime(state.endHour, state.endMinute)
-                    .atZone(zone).toInstant()
-                val slots = buildWeeklySlots(baseStart, baseEnd, state.repeatWeeks)
-                    .map { (start, end) -> start.toString() to end.toString() }
+                val slots = WeeklyAvailabilityPattern(baseSlot, state.repeatWeeks).generate()
                 repository.createSlots(counsellorId, slots)
             }
             _uiState.update {
@@ -200,37 +194,27 @@ class AvailabilityViewModel(
                 )
             }
             result.onSuccess {
-                _messages.send(
-                    UiMessage(
-                        if (state.editingSlot != null) "Availability updated." else "Availability added.",
-                        MessageKind.SUCCESS,
-                    ),
+                postSuccess(
+                    if (state.editingSlot != null) "Availability updated." else "Availability added.",
                 )
                 load(refresh = true)
             }.onFailure {
-                _messages.send(
-                    UiMessage(
-                        it.message ?: "Could not save availability.",
-                        MessageKind.ERROR,
-                    ),
-                )
+                postError(it.message ?: "Could not save availability.")
             }
         }
     }
 
     fun deleteSlot(slot: AvailabilitySlot) {
-        if (!slot.isEditable || _uiState.value.deletingSlotId != null) return
+        if (!slot.isEditable() || _uiState.value.deletingSlotId != null) return
         viewModelScope.launch {
             _uiState.update { it.copy(deletingSlotId = slot.id) }
             repository.deleteSlot(slot.id)
                 .onSuccess {
-                    _messages.send(UiMessage("Availability slot deleted.", MessageKind.SUCCESS))
+                    postSuccess("Availability slot deleted.")
                     load(refresh = true)
                 }
                 .onFailure {
-                    _messages.send(
-                        UiMessage(it.message ?: "Could not delete the slot.", MessageKind.ERROR),
-                    )
+                    postError(it.message ?: "Could not delete the slot.")
                 }
             _uiState.update { it.copy(deletingSlotId = null) }
         }
@@ -246,7 +230,7 @@ class AvailabilityViewModel(
                 )
             }
             if (requestedCounsellorId == null && _uiState.value.counsellorId == null) {
-                repository.getMyCounsellor(currentUserId)
+                repository.getMyCounsellor(currentAuthUserId)
                     .onSuccess { counsellor ->
                         if (counsellor == null) {
                             _uiState.update {
@@ -279,48 +263,49 @@ class AvailabilityViewModel(
             }
 
             val id = _uiState.value.counsellorId ?: requestedCounsellorId ?: return@launch
-            val detailResult = repository.getCounsellor(id)
-            detailResult.onSuccess { counsellor ->
-                if (counsellor == null) {
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            isRefreshing = false,
-                            loadError = "That counsellor could not be found.",
-                        )
+            repository.getCounsellor(id)
+                .onSuccess { counsellor ->
+                    if (counsellor == null) {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                isRefreshing = false,
+                                loadError = "That counsellor could not be found.",
+                            )
+                        }
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                isRefreshing = false,
+                                loadError = null,
+                                counsellorId = counsellor.id,
+                                counsellorName = counsellor.fullName,
+                                slots = counsellor.availability,
+                            )
+                        }
                     }
-                } else {
-                    _uiState.update {
-                        it.copy(
+                }
+                .onFailure { error ->
+                    _uiState.update { state ->
+                        state.copy(
                             isLoading = false,
                             isRefreshing = false,
-                            loadError = null,
-                            counsellorId = counsellor.id,
-                            counsellorName = counsellor.fullName,
-                            slots = counsellor.slots,
+                            loadError = error.message ?: "Could not load availability.",
                         )
                     }
                 }
-            }.onFailure { error ->
-                _uiState.update { state ->
-                    state.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        loadError = error.message ?: "Could not load availability.",
-                    )
-                }
-            }
         }
     }
 
     companion object {
         fun factory(
             counsellorId: String?,
-            currentUserId: String,
+            currentAuthUserId: String,
             repository: CounsellorRepository,
         ) = viewModelFactory {
             initializer {
-                AvailabilityViewModel(counsellorId, currentUserId, repository)
+                AvailabilityViewModel(counsellorId, currentAuthUserId, repository)
             }
         }
     }

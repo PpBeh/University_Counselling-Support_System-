@@ -41,9 +41,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.AppConstants
 import com.example.counselling.core.SessionManager
-import com.example.counselling.feature.appointment.data.AppointmentRepository
-import com.example.counselling.feature.auth.data.AuthRepository
-import com.example.counselling.feature.student.data.ProfileRepository
+import com.example.counselling.feature.appointment.domain.AppointmentRepository
+import com.example.counselling.feature.auth.domain.AuthRepository
+import com.example.counselling.feature.student.domain.StudentRepository
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.AppTopBar
@@ -61,7 +61,7 @@ import com.example.counselling.ui.theme.SoftError
 @Composable
 fun ProfileRoute(
     sessionManager: SessionManager,
-    profileRepository: ProfileRepository,
+    studentRepository: StudentRepository,
     authRepository: AuthRepository,
     appointmentRepository: AppointmentRepository,
     onSignOut: () -> Unit,
@@ -69,7 +69,7 @@ fun ProfileRoute(
     val viewModel: ProfileViewModel = viewModel(
         factory = ProfileViewModel.factory(
             sessionManager = sessionManager,
-            profileRepository = profileRepository,
+            studentRepository = studentRepository,
             authRepository = authRepository,
             appointmentRepository = appointmentRepository,
         ),
@@ -168,7 +168,7 @@ private fun ProfileScreen(
                             )
                             Row(modifier = Modifier.padding(top = 8.dp)) {
                                 StatusChip(
-                                    status = state.role.replaceFirstChar { it.uppercase() },
+                                    status = state.roleLabel,
                                 )
                             }
                         }

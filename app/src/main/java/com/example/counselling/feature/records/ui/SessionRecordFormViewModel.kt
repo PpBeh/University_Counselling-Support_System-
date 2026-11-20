@@ -1,22 +1,21 @@
 // Module 4 | Owner: Jeremy
 package com.example.counselling.feature.records.ui
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.counselling.core.DateTimeUtils
-import com.example.counselling.core.MessageKind
-import com.example.counselling.core.UiMessage
-import com.example.counselling.feature.appointment.data.AppointmentRepository
-import com.example.counselling.feature.appointment.model.Appointment
-import com.example.counselling.feature.records.data.SessionRecordRepository
-import com.example.counselling.feature.records.model.SessionRecord
-import kotlinx.coroutines.channels.Channel
+import com.example.counselling.core.domain.AppointmentStatus
+import com.example.counselling.core.domain.RiskLevel
+import com.example.counselling.core.ui.BaseViewModel
+import com.example.counselling.feature.appointment.domain.Appointment
+import com.example.counselling.feature.appointment.domain.AppointmentRepository
+import com.example.counselling.feature.records.domain.FollowUp
+import com.example.counselling.feature.records.domain.SessionRecordRepository
+import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -39,20 +38,19 @@ data class SessionRecordFormUiState(
     val saveSuccess: Boolean = false,
 )
 
+// OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
+
 class SessionRecordFormViewModel(
     private val recordId: String?,
     private val appointmentId: String?,
     private val recordRepository: SessionRecordRepository,
     private val appointmentRepository: AppointmentRepository,
-) : ViewModel() {
+) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(
         SessionRecordFormUiState(isEdit = recordId != null),
     )
     val uiState: StateFlow<SessionRecordFormUiState> = _uiState.asStateFlow()
-
-    private val _messages = Channel<UiMessage>(Channel.BUFFERED)
-    val messages = _messages.receiveAsFlow()
 
     init {
         load()
@@ -85,7 +83,7 @@ class SessionRecordFormViewModel(
         if (state.isSaving || state.readOnly) return
         val appointment = state.appointment
         if (appointment == null) {
-            _messages.trySend(UiMessage("That appointment could not be loaded.", MessageKind.ERROR))
+            postError("That appointment could not be loaded.")
             return
         }
         val notesError = when {
@@ -101,18 +99,17 @@ class SessionRecordFormViewModel(
                 "Public summary must be 2,000 characters or fewer."
             else -> null
         }
-        val riskError = if (state.riskLevel !in listOf("low", "medium", "high")) {
-            "Choose a risk level."
-        } else {
-            null
-        }
-        val due = state.followUpDueMillis?.let {
-            DateTimeUtils.toApiTimestamp(it, 9, 0)
+        val risk = RiskLevel.fromWire(state.riskLevel)
+        val riskError = if (risk == null) "Choose a risk level." else null
+        val due = state.followUpDueMillis?.let { millis ->
+            runCatching {
+                Instant.parse(DateTimeUtils.toApiTimestamp(millis, 9, 0))
+            }.getOrNull()
         }
         val dueError = if (state.followUpNeeded) {
             when {
                 due == null -> "Choose a follow-up due date."
-                DateTimeUtils.isPast(due) -> "The follow-up due date must be in the future."
+                !due.isAfter(Instant.now()) -> "The follow-up due date must be in the future."
                 else -> null
             }
         } else {
@@ -127,44 +124,36 @@ class SessionRecordFormViewModel(
             )
         }
         if (listOf(notesError, summaryError, riskError, dueError).any { it != null }) return
+        if (risk == null) return
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true) }
+            val followUp = due?.let(::FollowUp)
             val result = if (recordId == null) {
                 recordRepository.createRecord(
                     appointmentId = appointment.id,
                     privateNotes = state.privateNotes,
                     publicSummary = state.publicSummary,
-                    riskLevel = state.riskLevel,
-                    followUpNeeded = state.followUpNeeded,
-                    followUpDue = due,
+                    risk = risk,
+                    followUp = followUp,
                 )
             } else {
                 recordRepository.updateRecord(
                     recordId = recordId,
                     privateNotes = state.privateNotes,
                     publicSummary = state.publicSummary,
-                    riskLevel = state.riskLevel,
-                    followUpNeeded = state.followUpNeeded,
-                    followUpDue = due,
+                    risk = risk,
+                    followUp = followUp,
                 )
             }
             _uiState.update { it.copy(isSaving = false) }
             result.onSuccess {
                 _uiState.update { it.copy(saveSuccess = true) }
-                _messages.send(
-                    UiMessage(
-                        if (recordId == null) "Session record created." else "Session record updated.",
-                        MessageKind.SUCCESS,
-                    ),
+                postSuccess(
+                    if (recordId == null) "Session record created." else "Session record updated.",
                 )
             }.onFailure {
-                _messages.send(
-                    UiMessage(
-                        it.message ?: "Could not save the session record.",
-                        MessageKind.ERROR,
-                    ),
-                )
+                postError(it.message ?: "Could not save the session record.")
             }
         }
     }
@@ -192,10 +181,10 @@ class SessionRecordFormViewModel(
                         appointment = record.appointment,
                         privateNotes = record.privateNotes,
                         publicSummary = record.publicSummary,
-                        riskLevel = record.riskLevel,
+                        riskLevel = record.risk.code,
                         followUpNeeded = record.followUpNeeded,
-                        followUpDueMillis = DateTimeUtils.localDate(record.followUpDue)?.let {
-                            DateTimeUtils.datePickerMillis(it)
+                        followUpDueMillis = record.followUpDue?.let(DateTimeUtils::parse)?.let {
+                            DateTimeUtils.datePickerMillis(it.toLocalDate())
                         },
                     )
                 }
@@ -213,7 +202,7 @@ class SessionRecordFormViewModel(
                     }
                     return@launch
                 }
-                if (appointment.status != "completed") {
+                if (appointment.status != AppointmentStatus.Completed) {
                     _uiState.update {
                         it.copy(
                             isLoading = false,

@@ -1,12 +1,12 @@
 // Module 6 | Owner: Michael
 package com.example.counselling.feature.enquiry.ui
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.example.counselling.feature.enquiry.data.FeedbackRepository
-import com.example.counselling.feature.enquiry.model.FeedbackWithAppointment
+import com.example.counselling.core.ui.BaseViewModel
+import com.example.counselling.feature.enquiry.domain.Feedback
+import com.example.counselling.feature.enquiry.domain.FeedbackRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,12 +17,14 @@ data class CounsellorFeedbackUiState(
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
     val error: String? = null,
-    val feedback: List<FeedbackWithAppointment> = emptyList(),
+    val feedback: List<Feedback> = emptyList(),
 )
+
+// OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
 
 class CounsellorFeedbackViewModel(
     private val repository: FeedbackRepository,
-) : ViewModel() {
+) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(CounsellorFeedbackUiState())
     val uiState: StateFlow<CounsellorFeedbackUiState> = _uiState.asStateFlow()
@@ -43,7 +45,7 @@ class CounsellorFeedbackViewModel(
                     error = null,
                 )
             }
-            repository.getFeedbackWithAppointments()
+            repository.getFeedback()
                 .onSuccess { feedback ->
                     _uiState.update {
                         it.copy(

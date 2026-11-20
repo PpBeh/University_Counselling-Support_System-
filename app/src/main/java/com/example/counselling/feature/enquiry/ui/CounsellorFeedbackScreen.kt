@@ -26,8 +26,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.DateTimeUtils
-import com.example.counselling.feature.enquiry.data.FeedbackRepository
-import com.example.counselling.feature.enquiry.model.FeedbackWithAppointment
+import com.example.counselling.feature.enquiry.domain.FeedbackRepository
+import com.example.counselling.feature.enquiry.domain.Feedback
 import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.EmptyState
 import com.example.counselling.ui.components.ErrorState
@@ -111,7 +111,7 @@ private fun CounsellorFeedbackScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        items(state.feedback, key = { it.feedback.id }) { item ->
+                        items(state.feedback, key = { it.id }) { item ->
                             CounsellorFeedbackCard(item)
                         }
                     }
@@ -122,8 +122,7 @@ private fun CounsellorFeedbackScreen(
 }
 
 @Composable
-private fun CounsellorFeedbackCard(item: FeedbackWithAppointment) {
-    val appointment = item.appointment
+private fun CounsellorFeedbackCard(item: Feedback) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
@@ -132,19 +131,19 @@ private fun CounsellorFeedbackCard(item: FeedbackWithAppointment) {
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Text(
-                text = appointment?.studentName ?: "Student",
+                text = item.studentName,
                 style = MaterialTheme.typography.titleMedium,
             )
             Text(
-                text = "${appointment?.concernCategory ?: "Completed session"} · " +
-                    DateTimeUtils.formatDate(appointment?.slotStart),
+                text = "${item.concernCategory} · " +
+                    DateTimeUtils.formatDate(item.sessionStart),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            StarRating(rating = item.feedback.rating, starSize = 22.dp)
-            if (!item.feedback.comment.isNullOrBlank()) {
+            StarRating(rating = item.rating.value, starSize = 22.dp)
+            if (!item.comment.isNullOrBlank()) {
                 Text(
-                    text = item.feedback.comment,
+                    text = item.comment,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 8.dp),
                 )

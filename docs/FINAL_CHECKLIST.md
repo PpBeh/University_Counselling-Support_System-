@@ -7,8 +7,17 @@
 | All 6 modules implemented | ✅ |
 | All 3 unique features implemented | ✅ |
 | Android debug build | ✅ `BUILD SUCCESSFUL` |
-| Local unit tests | ✅ 15/15 passed |
-| Supabase schema/RLS in repository | ✅ |
+| Local unit tests | ✅ 54/54 passed |
+| Supabase schema/RLS in repository | ✅ OOP Phase 1 |
+| OOP database migration + seeds + RLS proof | ✅ Phase 1 |
+| OOP Android domain layer | ✅ Phase 2 |
+| OOP shared infrastructure (base repo/VM/translator/factory/nav mapping) | ✅ Phase 3 |
+| Beh modules converted to OOP domain/data/UI | ✅ Phase 4 |
+| Jeremy modules converted to OOP domain/data/UI | ✅ Phase 5 |
+| Michael modules converted to OOP domain/data/UI | ✅ Phase 6 |
+| Final class diagram/OOP notes/cleanup | ✅ Phase 7 |
+| OOP evidence map | ✅ [`OOP_NOTES.md`](OOP_NOTES.md) |
+| Final class diagram | ✅ [`CLASS_DIAGRAM.md`](CLASS_DIAGRAM.md) |
 | Shared Supabase config included | ✅ `supabase.properties` |
 | Live demo Auth accounts usable | ❌ Needs recreation — see below |
 | End-to-end role walkthrough | ⏳ Blocked by the demo Auth rows |
@@ -77,41 +86,43 @@ Test suites:
 ## 3. Supabase setup checklist
 
 1. Create/confirm the Supabase project.
-2. Run SQL in this exact order:
-   1. `supabase/schema.sql`
-   2. `supabase/seed_reference.sql`
-   3. Create **admin/counsellors** through Authentication → Users (auto-confirmed). Create **Aina/Faris** through the app Register screen, or use the Dashboard metadata JSON from `SETUP_GUIDE.md` Step 5.3.
+2. For a **fresh** project, run SQL in this exact order:
+   1. `supabase/schema.sql` (OOP class-table schema)
+   2. `supabase/seed_reference.sql` (pre-provisions admin/counsellors)
+   3. Create the five **Auth** users. Staff link by email; Aina/Faris need the
+      student metadata JSON from `SETUP_GUIDE.md` §2.3.
    4. `supabase/seed_demo.sql`
-3. Confirm `supabase.properties` URL and publishable key belong to this project.
-4. Turn **Confirm email** off for the demo.
-5. Confirm the counsellor rows are linked and profiles have the correct roles.
-6. Run the RLS proof queries in `SETUP_GUIDE.md` §11.
+3. For an **existing** project, run
+   `supabase/migrations/20261120_oop_refactor.sql` on a copy first; see
+   `SETUP_GUIDE.md` Part B. Do not run `schema.sql` over the old tables.
+4. Confirm `supabase.properties` URL and publishable key belong to this project.
+5. Turn **Confirm email** off for the demo.
+6. Confirm users have the correct subtype rows
+   (`students`/`counsellors`/`administrators`) and staff Auth accounts are linked.
+7. Run `supabase/test_queries_oop_rls.sql` (see `SETUP_GUIDE.md` §7).
 
-### Demo Auth recovery (required now)
+### Demo Auth recovery (old pre-OOP project only)
 
-The current demo rows were inserted with raw SQL. Symptoms:
+`supabase/reset_demo_auth.sql` is written for the **old** tables. Do not run it
+after the OOP migration; it will not find the new tables. The OOP migration
+preserves valid Auth UUIDs but does not repair malformed `auth.users` rows.
 
-- unknown email → `400 invalid_credentials`
-- known demo email → `500 Database error querying schema`
-- Dashboard delete → “Database loading error”
-- Dashboard create → “Database error creating user”
+For a fresh OOP project:
 
-There are two causes:
-
-1. Malformed raw-SQL Auth rows.
-2. Dashboard deletes are blocked by restrictive FKs from appointments, session records and feedback. Creating a student from the Dashboard also fails because the Auth trigger requires student metadata.
-
-Fix:
-
-1. Run [`supabase/reset_demo_auth.sql`](../supabase/reset_demo_auth.sql) in the SQL Editor. This is demo-only and destructive; it clears dependent demo app data and the five Auth users. It rolls back on any error.
-2. Recreate admin and counsellors through **Authentication → Users**, auto-confirmed.
-3. Recreate Aina and Faris through the app's **Register** screen with the exact metadata in `SETUP_GUIDE.md` Step 5.3. Do not create students in the Dashboard unless it offers a metadata JSON box.
+1. Run `schema.sql` and `seed_reference.sql` first. The seed pre-provisions the
+   admin and counsellors with `auth_user_id = NULL`.
+2. Create the admin/counsellor Auth users in **Authentication → Users**. The
+   sign-up trigger links them by email.
+3. Create Aina/Faris with the metadata JSON from `SETUP_GUIDE.md` §2.3 (or
+   register them through the app once Phases 4–6 are complete).
 4. Run `seed_demo.sql`.
 5. Sign in again.
 
-If creating even staff users still fails, the Auth trigger/schema is damaged. Create a fresh Supabase project and follow `SETUP_GUIDE.md` from Step 3 instead of modifying `auth.users`.
+For an old project that has **not** been migrated yet, the old
+`reset_demo_auth.sql` recovery can still be used, then the OOP migration. If even
+staff creation fails on a damaged project, use a fresh Supabase project.
 
-Full details: `SETUP_GUIDE.md` §9.16.
+Full details: `SETUP_GUIDE.md` §2.3 and §9.
 
 ---
 
@@ -168,10 +179,12 @@ Full details: `SETUP_GUIDE.md` §9.16.
 - [ ] Admin cannot read private session notes or individual feedback.
 - [ ] Counsellor sees only their own appointments, records and feedback.
 - [ ] Resource drafts are absent for students.
-- [ ] Profile edit cannot change role/student ID/is_active.
+- [ ] Profile edit cannot change user_type/student ID/is_active.
 - [ ] Deactivation blocked while upcoming appointments exist.
 - [ ] Appointments mutated only through RPCs.
-- [ ] RLS proof queries produce expected counts.
+- [ ] `test_queries_oop_rls.sql` produces the expected counts.
+- [ ] Every resource/enquiry/user has exactly one subtype row.
+- [ ] Old tables remain in `legacy` until the optional drop is explicitly run.
 
 ---
 
@@ -193,5 +206,6 @@ Full details: `SETUP_GUIDE.md` §9.16.
 - [ ] Debug APK
 - [ ] Screenshots: login, student Home, Smart Match, appointment, triage board, self-check result, enquiry reply, resource library
 - [ ] Report with module allocation (Beh 1–2, Jeremy 3–4, Michael 5–6)
+- [ ] OOP evidence: [`OOP_NOTES.md`](OOP_NOTES.md) + [`CLASS_DIAGRAM.md`](CLASS_DIAGRAM.md)
 - [ ] RLS proof output
 - [ ] Demo accounts table and recovery note

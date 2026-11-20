@@ -2,15 +2,15 @@
 // The 10 answers are held only in memory. Nothing is written to Supabase.
 package com.example.counselling.feature.resource.ui
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.example.counselling.feature.resource.data.ResourceRepository
-import com.example.counselling.feature.resource.model.ResourceRow
-import com.example.counselling.feature.resource.model.SelfCheckContent
-import com.example.counselling.feature.resource.model.SelfCheckResult
-import com.example.counselling.feature.resource.model.recommendResources
+import com.example.counselling.core.ui.BaseViewModel
+import com.example.counselling.feature.resource.domain.Resource
+import com.example.counselling.feature.resource.domain.ResourceRepository
+import com.example.counselling.feature.resource.domain.SelfCheckContent
+import com.example.counselling.feature.resource.domain.SelfCheckResult
+import com.example.counselling.feature.resource.domain.recommendResources
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,14 +22,16 @@ data class SelfCheckUiState(
     val currentIndex: Int = 0,
     val answers: List<Int?> = List(SelfCheckContent.questions.size) { null },
     val result: SelfCheckResult? = null,
-    val recommendations: List<ResourceRow> = emptyList(),
+    val recommendations: List<Resource> = emptyList(),
     val isLoadingRecommendations: Boolean = false,
     val recommendationError: String? = null,
 )
 
+// OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
+
 class SelfCheckViewModel(
     private val repository: ResourceRepository,
-) : ViewModel() {
+) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(SelfCheckUiState())
     val uiState: StateFlow<SelfCheckUiState> = _uiState.asStateFlow()

@@ -1,5 +1,5 @@
 // Navigation | Owner: shared (Beh, Jeremy, Michael)
-// Role decides the five (maximum) bottom-navigation tabs.
+// The polymorphic User decides its five (maximum) bottom-navigation tabs.
 package com.example.counselling.navigation
 
 import androidx.compose.material.icons.Icons
@@ -12,7 +12,8 @@ import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.School
 import androidx.compose.ui.graphics.vector.ImageVector
-import com.example.counselling.core.UserRole
+import com.example.counselling.core.domain.HomeTab
+import com.example.counselling.core.domain.User
 
 data class TopLevelDestination(
     val route: String,
@@ -20,28 +21,40 @@ data class TopLevelDestination(
     val icon: ImageVector,
 )
 
-fun destinationsFor(role: UserRole): List<TopLevelDestination> = when (role) {
-    UserRole.STUDENT -> listOf(
-        TopLevelDestination(Routes.HOME, "Home", Icons.Outlined.Home),
-        TopLevelDestination(Routes.STUDENT_APPOINTMENTS, "Appointments", Icons.Outlined.CalendarMonth),
-        TopLevelDestination(Routes.RESOURCES, "Resources", Icons.Outlined.MenuBook),
-        TopLevelDestination(Routes.ENQUIRIES, "Enquiries", Icons.Outlined.Forum),
-        TopLevelDestination(Routes.PROFILE, "Profile", Icons.Outlined.Person),
-    )
+// OOP: Polymorphism - navigation asks the User object for its tabs.
+fun destinationsFor(user: User): List<TopLevelDestination> =
+    user.homeTabs().map { it.toDestination() }
 
-    UserRole.COUNSELLOR -> listOf(
-        TopLevelDestination(Routes.HOME, "Home", Icons.Outlined.Home),
-        TopLevelDestination(Routes.COUNSELLOR_SCHEDULE, "Schedule", Icons.Outlined.CalendarMonth),
-        TopLevelDestination(Routes.COUNSELLOR_RECORDS, "Records", Icons.Outlined.Description),
-        TopLevelDestination(Routes.ENQUIRIES, "Enquiries", Icons.Outlined.Forum),
-        TopLevelDestination(Routes.PROFILE, "Profile", Icons.Outlined.Person),
+// OOP: Polymorphism - HomeTab owns its logical identity; this UI mapping is the
+// only place that knows the Android icon and route string.
+private fun HomeTab.toDestination(): TopLevelDestination = when (this) {
+    HomeTab.HOME -> TopLevelDestination(Routes.HOME, label, Icons.Outlined.Home)
+    HomeTab.APPOINTMENTS -> TopLevelDestination(
+        Routes.STUDENT_APPOINTMENTS,
+        label,
+        Icons.Outlined.CalendarMonth,
     )
-
-    UserRole.ADMIN -> listOf(
-        TopLevelDestination(Routes.HOME, "Home", Icons.Outlined.Home),
-        TopLevelDestination(Routes.ADMIN_COUNSELLORS, "Counsellors", Icons.Outlined.Groups),
-        TopLevelDestination(Routes.ADMIN_STUDENTS, "Students", Icons.Outlined.School),
-        TopLevelDestination(Routes.RESOURCES, "Resources", Icons.Outlined.MenuBook),
-        TopLevelDestination(Routes.PROFILE, "Profile", Icons.Outlined.Person),
+    HomeTab.SCHEDULE -> TopLevelDestination(
+        Routes.COUNSELLOR_SCHEDULE,
+        label,
+        Icons.Outlined.CalendarMonth,
     )
+    HomeTab.RECORDS -> TopLevelDestination(
+        Routes.COUNSELLOR_RECORDS,
+        label,
+        Icons.Outlined.Description,
+    )
+    HomeTab.COUNSELLORS -> TopLevelDestination(
+        Routes.ADMIN_COUNSELLORS,
+        label,
+        Icons.Outlined.Groups,
+    )
+    HomeTab.STUDENTS -> TopLevelDestination(
+        Routes.ADMIN_STUDENTS,
+        label,
+        Icons.Outlined.School,
+    )
+    HomeTab.RESOURCES -> TopLevelDestination(Routes.RESOURCES, label, Icons.Outlined.MenuBook)
+    HomeTab.ENQUIRIES -> TopLevelDestination(Routes.ENQUIRIES, label, Icons.Outlined.Forum)
+    HomeTab.PROFILE -> TopLevelDestination(Routes.PROFILE, label, Icons.Outlined.Person)
 }

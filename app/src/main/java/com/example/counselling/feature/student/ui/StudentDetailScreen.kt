@@ -26,8 +26,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.UiState
-import com.example.counselling.feature.student.data.ProfileRepository
-import com.example.counselling.feature.student.model.Profile
+import com.example.counselling.core.domain.Student
+import com.example.counselling.feature.student.domain.StudentRepository
 import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.ErrorState
 import com.example.counselling.ui.components.InfoCard
@@ -38,11 +38,11 @@ import com.example.counselling.ui.components.UserAvatar
 @Composable
 fun StudentDetailRoute(
     studentId: String,
-    profileRepository: ProfileRepository,
+    studentRepository: StudentRepository,
     onBack: () -> Unit,
 ) {
     val viewModel: StudentDetailViewModel = viewModel(
-        factory = StudentDetailViewModel.factory(studentId, profileRepository),
+        factory = StudentDetailViewModel.factory(studentId, studentRepository),
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -65,7 +65,7 @@ fun StudentDetailRoute(
 }
 
 @Composable
-private fun StudentDetailContent(student: Profile) {
+private fun StudentDetailContent(student: Student) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -99,21 +99,14 @@ private fun StudentDetailContent(student: Profile) {
         SectionHeader(title = "Contact and study details")
         Spacer(Modifier.height(10.dp))
         InfoCard(title = "Student information", icon = Icons.Outlined.School) {
-            DetailLine("Student ID", student.studentId ?: "—")
-            DetailLine("Programme", student.programme ?: "—")
-            DetailLine(
-                "Preferred mode",
-                when (student.preferredSessionMode) {
-                    "in_person" -> "In person"
-                    "online" -> "Online"
-                    else -> "Not set"
-                },
-            )
+            DetailLine("Student ID", student.studentId.value)
+            DetailLine("Programme", student.programme)
+            DetailLine("Preferred mode", student.preferredMode.label)
         }
         Spacer(Modifier.height(12.dp))
         InfoCard(title = "Contact", icon = Icons.Outlined.Email) {
-            DetailLine("Email", student.email)
-            DetailLine("Phone", student.phone ?: "—")
+            DetailLine("Email", student.email.value)
+            DetailLine("Phone", student.phone?.value ?: "—")
         }
         Spacer(Modifier.height(16.dp))
         InfoCard(

@@ -1,6 +1,7 @@
 // Navigation | Owner: shared (Beh, Jeremy, Michael)
-// One root decides between auth and the signed-in role shell. Navigation
-// Compose then owns the login/register stack and the role-based main shell.
+// OOP: Dependency injection at the UI boundary - routes receive repository
+// interfaces and the polymorphic User. MainApp asks user.homeTabs() for its
+// destinations; no role-string branch decides which shell to show.
 package com.example.counselling.navigation
 
 import androidx.compose.foundation.layout.WindowInsets
@@ -33,41 +34,40 @@ import com.example.counselling.core.MessageKind
 import com.example.counselling.core.SessionManager
 import com.example.counselling.core.SessionState
 import com.example.counselling.core.UiMessage
-import com.example.counselling.core.UserRole
-import com.example.counselling.feature.appointment.data.AppointmentRepository
+import com.example.counselling.core.domain.User
+import com.example.counselling.feature.appointment.domain.AppointmentRepository
 import com.example.counselling.feature.appointment.ui.AdminAppointmentsRoute
 import com.example.counselling.feature.appointment.ui.BookAppointmentRoute
 import com.example.counselling.feature.appointment.ui.CounsellorScheduleRoute
 import com.example.counselling.feature.appointment.ui.RescheduleRoute
 import com.example.counselling.feature.appointment.ui.StudentAppointmentsRoute
-import com.example.counselling.feature.auth.data.AuthRepository
+import com.example.counselling.feature.auth.domain.AuthRepository
 import com.example.counselling.feature.auth.ui.ConfigurationErrorScreen
 import com.example.counselling.feature.auth.ui.LoginRoute
 import com.example.counselling.feature.auth.ui.RegisterRoute
 import com.example.counselling.feature.auth.ui.SplashScreen
-import com.example.counselling.feature.counsellor.data.CounsellorRepository
+import com.example.counselling.feature.counsellor.domain.CounsellorRepository
 import com.example.counselling.feature.counsellor.ui.CounsellorAvailabilityRoute
 import com.example.counselling.feature.counsellor.ui.CounsellorDetailRoute
 import com.example.counselling.feature.counsellor.ui.CounsellorFormRoute
 import com.example.counselling.feature.counsellor.ui.CounsellorListRoute
-import com.example.counselling.feature.enquiry.data.EnquiryRepository
-import com.example.counselling.feature.enquiry.data.FeedbackRepository
+import com.example.counselling.feature.enquiry.domain.EnquiryRepository
+import com.example.counselling.feature.enquiry.domain.FeedbackRepository
 import com.example.counselling.feature.enquiry.ui.CounsellorFeedbackRoute
 import com.example.counselling.feature.enquiry.ui.CounsellorInboxRoute
 import com.example.counselling.feature.enquiry.ui.StudentEnquiriesRoute
 import com.example.counselling.feature.enquiry.ui.StudentFeedbackRoute
 import com.example.counselling.feature.home.ui.HomeRoute
-import com.example.counselling.feature.records.data.SessionRecordRepository
+import com.example.counselling.feature.records.domain.SessionRecordRepository
 import com.example.counselling.feature.records.ui.FollowUpRoute
 import com.example.counselling.feature.records.ui.SessionRecordFormRoute
 import com.example.counselling.feature.records.ui.SessionRecordsRoute
 import com.example.counselling.feature.records.ui.StudentSummariesRoute
-import com.example.counselling.feature.resource.data.ResourceRepository
+import com.example.counselling.feature.resource.domain.ResourceRepository
 import com.example.counselling.feature.resource.ui.ResourceFormRoute
 import com.example.counselling.feature.resource.ui.ResourcesRoute
 import com.example.counselling.feature.resource.ui.SelfCheckRoute
-import com.example.counselling.feature.student.data.ProfileRepository
-import com.example.counselling.feature.student.model.Profile
+import com.example.counselling.feature.student.domain.StudentRepository
 import com.example.counselling.feature.student.ui.ProfileRoute
 import com.example.counselling.feature.student.ui.StudentDetailRoute
 import com.example.counselling.feature.student.ui.StudentListRoute
@@ -85,7 +85,7 @@ fun AppRoot(container: AppContainer) {
 
     val sessionManager = container.sessionManager
     val authRepository = container.authRepository
-    val profileRepository = container.profileRepository
+    val studentRepository = container.studentRepository
     val appointmentRepository = container.appointmentRepository
     val counsellorRepository = container.counsellorRepository
     val recordRepository = container.recordRepository
@@ -96,7 +96,7 @@ fun AppRoot(container: AppContainer) {
     if (
         sessionManager == null ||
         authRepository == null ||
-        profileRepository == null ||
+        studentRepository == null ||
         appointmentRepository == null ||
         counsellorRepository == null ||
         recordRepository == null ||
@@ -123,10 +123,10 @@ fun AppRoot(container: AppContainer) {
             notice = state.notice,
         )
         is SessionState.SignedIn -> MainApp(
-            profile = state.profile,
+            user = state.user,
             sessionManager = sessionManager,
             authRepository = authRepository,
-            profileRepository = profileRepository,
+            studentRepository = studentRepository,
             appointmentRepository = appointmentRepository,
             counsellorRepository = counsellorRepository,
             recordRepository = recordRepository,
@@ -178,10 +178,10 @@ private fun AuthNavGraph(
 
 @Composable
 private fun MainApp(
-    profile: Profile,
+    user: User,
     sessionManager: SessionManager,
     authRepository: AuthRepository,
-    profileRepository: ProfileRepository,
+    studentRepository: StudentRepository,
     appointmentRepository: AppointmentRepository,
     counsellorRepository: CounsellorRepository,
     recordRepository: SessionRecordRepository,
@@ -189,8 +189,7 @@ private fun MainApp(
     enquiryRepository: EnquiryRepository,
     feedbackRepository: FeedbackRepository,
 ) {
-    val role = profile.userRole ?: UserRole.STUDENT
-    val destinations = remember(role) { destinationsFor(role) }
+    val destinations = remember(user) { destinationsFor(user) }
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -199,10 +198,10 @@ private fun MainApp(
     val currentRoute = backStackEntry?.destination?.route
     val isTopLevel = destinations.any { it.route == currentRoute }
 
-    LaunchedEffect(profile.id) {
+    LaunchedEffect(user.id) {
         snackbarHostState.showAppMessage(
             UiMessage(
-                text = "Welcome, ${profile.fullName.substringBefore(' ')}.",
+                text = "Welcome, ${user.fullName.substringBefore(' ')}.",
                 kind = MessageKind.SUCCESS,
             ),
         )
@@ -248,7 +247,7 @@ private fun MainApp(
         ) {
             composable(Routes.HOME) {
                 HomeRoute(
-                    profile = profile,
+                    user = user,
                     appointmentRepository = appointmentRepository,
                     recordRepository = recordRepository,
                     onNavigate = { route -> navController.navigateOnce(route) },
@@ -258,6 +257,7 @@ private fun MainApp(
             composable(Routes.STUDENT_APPOINTMENTS) {
                 StudentAppointmentsRoute(
                     repository = appointmentRepository,
+                    viewer = user,
                     onBook = { navController.navigateOnce(Routes.bookAppointment()) },
                     onReschedule = { id ->
                         navController.navigateOnce(Routes.reschedule(id))
@@ -315,7 +315,7 @@ private fun MainApp(
             }
 
             composable(Routes.ENQUIRIES) {
-                if (role == UserRole.COUNSELLOR) {
+                if (user.permissions.canAccessEnquiryInbox()) {
                     CounsellorInboxRoute(
                         enquiryRepository = enquiryRepository,
                         resourceRepository = resourceRepository,
@@ -335,7 +335,7 @@ private fun MainApp(
 
             composable(Routes.RESOURCES) {
                 ResourcesRoute(
-                    role = role,
+                    canManage = user.permissions.canManageResources(),
                     repository = resourceRepository,
                     onAdd = { navController.navigateOnce(Routes.resourceForm()) },
                     onEdit = { id -> navController.navigateOnce(Routes.resourceForm(id)) },
@@ -372,7 +372,7 @@ private fun MainApp(
 
             composable(Routes.RESOURCES_HOTLINE) {
                 ResourcesRoute(
-                    role = role,
+                    canManage = user.permissions.canManageResources(),
                     repository = resourceRepository,
                     hotlineOnly = true,
                     onBack = { navController.popBackStack() },
@@ -384,6 +384,7 @@ private fun MainApp(
             composable(Routes.COUNSELLOR_SCHEDULE) {
                 CounsellorScheduleRoute(
                     repository = appointmentRepository,
+                    viewer = user,
                     onManageAvailability = {
                         navController.navigateOnce(Routes.MY_AVAILABILITY)
                     },
@@ -425,7 +426,7 @@ private fun MainApp(
 
             composable(Routes.ADMIN_STUDENTS) {
                 StudentListRoute(
-                    profileRepository = profileRepository,
+                    studentRepository = studentRepository,
                     onBack = null,
                     onOpenStudent = { studentId ->
                         navController.navigateOnce(Routes.studentDetail(studentId))
@@ -435,7 +436,7 @@ private fun MainApp(
 
             composable(Routes.STUDENT_DIRECTORY) {
                 StudentListRoute(
-                    profileRepository = profileRepository,
+                    studentRepository = studentRepository,
                     onBack = { navController.popBackStack() },
                     onOpenStudent = { studentId ->
                         navController.navigateOnce(Routes.studentDetail(studentId))
@@ -450,7 +451,7 @@ private fun MainApp(
                 val studentId = entry.arguments?.getString("studentId").orEmpty()
                 StudentDetailRoute(
                     studentId = studentId,
-                    profileRepository = profileRepository,
+                    studentRepository = studentRepository,
                     onBack = { navController.popBackStack() },
                 )
             }
@@ -500,7 +501,7 @@ private fun MainApp(
                 val counsellorId = entry.arguments?.getString("counsellorId")
                 CounsellorAvailabilityRoute(
                     counsellorId = counsellorId,
-                    currentUserId = profile.id,
+                    currentUserId = user.authUserId ?: user.id,
                     repository = counsellorRepository,
                     onBack = { navController.popBackStack() },
                 )
@@ -509,7 +510,7 @@ private fun MainApp(
             composable(Routes.MY_AVAILABILITY) {
                 CounsellorAvailabilityRoute(
                     counsellorId = null,
-                    currentUserId = profile.id,
+                    currentUserId = user.authUserId ?: user.id,
                     repository = counsellorRepository,
                     onBack = { navController.popBackStack() },
                 )
@@ -576,7 +577,7 @@ private fun MainApp(
             composable(Routes.PROFILE) {
                 ProfileRoute(
                     sessionManager = sessionManager,
-                    profileRepository = profileRepository,
+                    studentRepository = studentRepository,
                     authRepository = authRepository,
                     appointmentRepository = appointmentRepository,
                     onSignOut = {
@@ -588,6 +589,7 @@ private fun MainApp(
             composable(Routes.ADMIN_APPOINTMENTS) {
                 AdminAppointmentsRoute(
                     repository = appointmentRepository,
+                    viewer = user,
                     onBack = { navController.popBackStack() },
                 )
             }

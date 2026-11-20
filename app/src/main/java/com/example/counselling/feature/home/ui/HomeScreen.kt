@@ -1,6 +1,6 @@
 // Home | Owner: shared (Beh, Jeremy, Michael)
-// Role-based dashboard shells. The appointment/stat widgets are connected to
-// the module repositories as those modules are delivered.
+// Permission-driven dashboard shells. The User subtype supplies its tabs,
+// greeting and capabilities; the appointment/stat widgets use domain data.
 package com.example.counselling.feature.home.ui
 
 import androidx.compose.foundation.clickable
@@ -41,11 +41,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.counselling.core.DateTimeUtils
-import com.example.counselling.core.UserRole
-import com.example.counselling.feature.appointment.model.Appointment
+import com.example.counselling.core.domain.AppointmentStatus
+import com.example.counselling.core.domain.Student
+import com.example.counselling.core.domain.User
+import com.example.counselling.feature.appointment.domain.Appointment
 import com.example.counselling.feature.appointment.ui.AppointmentCard
-import com.example.counselling.feature.records.model.AdminDashboardStats
-import com.example.counselling.feature.student.model.Profile
+import com.example.counselling.feature.records.domain.AdminDashboardStats
 import com.example.counselling.navigation.Routes
 import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.InfoCard
@@ -59,7 +60,7 @@ import com.example.counselling.ui.theme.WarningContainer
 
 @Composable
 fun HomeScreen(
-    profile: Profile,
+    user: User,
     onNavigate: (String) -> Unit,
     modifier: Modifier = Modifier,
     appointments: List<Appointment> = emptyList(),
@@ -71,15 +72,13 @@ fun HomeScreen(
     statsError: String? = null,
     onRetryStats: () -> Unit = {},
 ) {
-    val role = profile.userRole ?: UserRole.STUDENT
-
     Column(modifier = modifier.fillMaxSize()) {
         AppTopBar(
             title = "Counselling Support",
             actions = {
                 IconButton(onClick = { onNavigate(Routes.PROFILE) }) {
                     UserAvatar(
-                        initials = profile.initials,
+                        initials = user.initials,
                         size = 34.dp,
                         contentDescription = "Open profile",
                     )
@@ -94,20 +93,20 @@ fun HomeScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp),
         ) {
-            GreetingCard(profile = profile, role = role)
+            GreetingCard(user = user)
             Spacer(Modifier.height(22.dp))
 
-            when (role) {
-                UserRole.STUDENT -> StudentHome(
-                    profile = profile,
+            when {
+                user.permissions.canBookAppointments() -> StudentHome(
+                    student = user as Student,
                     onNavigate = onNavigate,
                     appointments = appointments,
                     isLoadingAppointments = isLoadingAppointments,
                     appointmentError = appointmentError,
                     onRetryAppointments = onRetryAppointments,
                 )
-                UserRole.COUNSELLOR -> CounsellorHome(onNavigate)
-                UserRole.ADMIN -> AdminHome(
+                user.permissions.canViewPrivateSessionNotes() -> CounsellorHome(onNavigate)
+                else -> AdminHome(
                     onNavigate = onNavigate,
                     stats = adminStats,
                     isLoadingStats = isLoadingStats,
@@ -122,7 +121,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun GreetingCard(profile: Profile, role: UserRole) {
+private fun GreetingCard(user: User) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
@@ -135,17 +134,13 @@ private fun GreetingCard(profile: Profile, role: UserRole) {
                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
             )
             Text(
-                text = profile.fullName.substringBefore(' '),
+                text = user.firstName,
                 style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier.padding(top = 2.dp),
             )
             Text(
-                text = when (role) {
-                    UserRole.STUDENT -> "You do not have to manage everything alone. What feels useful today?"
-                    UserRole.COUNSELLOR -> "Your space to support students with care and privacy."
-                    UserRole.ADMIN -> "A calm overview of the counselling service."
-                },
+                text = user.homeGreeting(),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f),
                 modifier = Modifier.padding(top = 6.dp),
@@ -162,7 +157,7 @@ private fun GreetingCard(profile: Profile, role: UserRole) {
 
 @Composable
 private fun StudentHome(
-    profile: Profile,
+    student: Student,
     onNavigate: (String) -> Unit,
     appointments: List<Appointment>,
     isLoadingAppointments: Boolean,
@@ -171,10 +166,10 @@ private fun StudentHome(
 ) {
     val nextAppointment = appointments
         .filter {
-            it.status in listOf("pending", "confirmed") &&
-                DateTimeUtils.isFuture(it.slotStart)
+            it.status in setOf(AppointmentStatus.Pending, AppointmentStatus.Confirmed) &&
+                it.slot.start.isAfter(java.time.Instant.now())
         }
-        .minByOrNull { it.slotStart }
+        .minByOrNull { it.slot.start }
 
     SectionHeader(
         title = "Quick actions",
@@ -234,7 +229,7 @@ private fun StudentHome(
         nextAppointment != null -> {
             AppointmentCard(
                 appointment = nextAppointment,
-                viewerRole = UserRole.STUDENT,
+                viewer = student,
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -274,15 +269,12 @@ private fun StudentHome(
         accentColor = SuccessGreen,
     )
 
-    if (profile.preferredSessionMode != null) {
-        Spacer(Modifier.height(16.dp))
-        Text(
-            text = "Preferred mode: " +
-                (if (profile.preferredSessionMode == "online") "Online" else "In person"),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+    Spacer(Modifier.height(16.dp))
+    Text(
+        text = "Preferred mode: ${student.preferredMode.label}",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable

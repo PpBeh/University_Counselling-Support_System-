@@ -49,9 +49,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.AppConstants
 import com.example.counselling.core.MessageKind
 import com.example.counselling.core.UiMessage
-import com.example.counselling.core.UserRole
-import com.example.counselling.feature.resource.data.ResourceRepository
-import com.example.counselling.feature.resource.model.ResourceRow
+import com.example.counselling.feature.resource.domain.ResourceRepository
+import com.example.counselling.feature.resource.domain.Resource
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.AppTopBar
@@ -67,7 +66,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun ResourcesRoute(
-    role: UserRole,
+    canManage: Boolean,
     repository: ResourceRepository,
     hotlineOnly: Boolean = false,
     onBack: (() -> Unit)? = null,
@@ -75,7 +74,7 @@ fun ResourcesRoute(
     onEdit: (String) -> Unit,
 ) {
     val viewModel: ResourcesViewModel = viewModel(
-        factory = ResourcesViewModel.factory(role, repository, hotlineOnly),
+        factory = ResourcesViewModel.factory(canManage, repository, hotlineOnly),
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarState = remember { SnackbarHostState() }
@@ -133,13 +132,13 @@ private fun ResourcesScreen(
     onQueryChange: (String) -> Unit,
     onCategoryChange: (String) -> Unit,
     onMediaTypeChange: (String) -> Unit,
-    onOpen: (ResourceRow) -> Unit,
-    onTogglePublish: (ResourceRow, Boolean) -> Unit,
-    onDelete: (ResourceRow) -> Unit,
+    onOpen: (Resource) -> Unit,
+    onTogglePublish: (Resource, Boolean) -> Unit,
+    onDelete: (Resource) -> Unit,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
 ) {
-    var resourceToDelete by remember { mutableStateOf<ResourceRow?>(null) }
+    var resourceToDelete by remember { mutableStateOf<Resource?>(null) }
     val filtered = remember(
         state.resources,
         state.query,
@@ -151,8 +150,8 @@ private fun ResourcesScreen(
             val matchesQuery = query.isBlank() ||
                 resource.title.contains(query, ignoreCase = true) ||
                 resource.description.contains(query, ignoreCase = true) ||
-                resource.category.contains(query, ignoreCase = true)
-            val matchesCategory = state.category == "All" || resource.category == state.category
+                resource.category.label.contains(query, ignoreCase = true)
+            val matchesCategory = state.category == "All" || resource.category.label == state.category
             val matchesMedia = state.mediaType == "All" || resource.mediaType == state.mediaType
             matchesQuery && matchesCategory && matchesMedia
         }
@@ -297,7 +296,7 @@ private fun ResourcesScreen(
 
 @Composable
 private fun ResourceCard(
-    resource: ResourceRow,
+    resource: Resource,
     canManage: Boolean,
     isBusy: Boolean,
     onOpen: () -> Unit,
@@ -322,7 +321,7 @@ private fun ResourceCard(
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
-                        text = "${resource.category} · ${resource.mediaType}",
+                        text = "${resource.category.label} · ${resource.mediaType}",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(top = 2.dp),

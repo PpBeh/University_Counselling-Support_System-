@@ -36,8 +36,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.counselling.feature.student.data.ProfileRepository
-import com.example.counselling.feature.student.model.Profile
+import com.example.counselling.core.domain.Student
+import com.example.counselling.feature.student.domain.StudentRepository
 import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.EmptyState
@@ -47,12 +47,12 @@ import com.example.counselling.ui.components.UserAvatar
 
 @Composable
 fun StudentListRoute(
-    profileRepository: ProfileRepository,
+    studentRepository: StudentRepository,
     onBack: (() -> Unit)?,
     onOpenStudent: (String) -> Unit,
 ) {
     val viewModel: StudentListViewModel = viewModel(
-        factory = StudentListViewModel.factory(profileRepository),
+        factory = StudentListViewModel.factory(studentRepository),
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     StudentListScreen(
@@ -82,7 +82,7 @@ private fun StudentListScreen(
         } else {
             state.students.filter {
                 it.fullName.contains(search, ignoreCase = true) ||
-                    it.studentId?.contains(search, ignoreCase = true) == true
+                    it.studentId.value.contains(search, ignoreCase = true)
             }
         }
     }
@@ -156,7 +156,7 @@ private fun StudentListScreen(
 }
 
 @Composable
-private fun StudentRow(student: Profile, onClick: () -> Unit) {
+private fun StudentRow(student: Student, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -186,12 +186,12 @@ private fun StudentRow(student: Profile, onClick: () -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = student.studentId ?: "No student ID",
+                    text = student.studentId.value,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = student.programme ?: "Programme not set",
+                    text = student.programme,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

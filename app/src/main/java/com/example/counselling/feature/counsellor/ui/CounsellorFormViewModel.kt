@@ -1,19 +1,19 @@
 // Module 3 | Owner: Jeremy
 package com.example.counselling.feature.counsellor.ui
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.example.counselling.core.MessageKind
-import com.example.counselling.core.UiMessage
 import com.example.counselling.core.Validators
-import com.example.counselling.feature.counsellor.data.CounsellorRepository
-import kotlinx.coroutines.channels.Channel
+import com.example.counselling.core.domain.ConcernCategory
+import com.example.counselling.core.domain.Counsellor
+import com.example.counselling.core.domain.DomainException
+import com.example.counselling.core.domain.Email
+import com.example.counselling.core.ui.BaseViewModel
+import com.example.counselling.feature.counsellor.domain.CounsellorRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -35,18 +35,19 @@ data class CounsellorFormUiState(
     val saveSuccess: Boolean = false,
 )
 
+// OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
+
 class CounsellorFormViewModel(
     private val counsellorId: String?,
     private val repository: CounsellorRepository,
-) : ViewModel() {
+) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(
         CounsellorFormUiState(isEdit = counsellorId != null, isLoading = counsellorId != null),
     )
     val uiState: StateFlow<CounsellorFormUiState> = _uiState.asStateFlow()
 
-    private val _messages = Channel<UiMessage>(Channel.BUFFERED)
-    val messages = _messages.receiveAsFlow()
+    private var currentIsActive = true
 
     init {
         if (counsellorId != null) load()
@@ -116,44 +117,46 @@ class CounsellorFormViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true) }
-            val result = if (counsellorId == null) {
-                repository.createCounsellor(
-                    fullName = state.fullName,
-                    email = state.email,
-                    specialisations = state.specialisations,
-                    languages = languages,
-                    bio = state.bio,
-                )
-            } else {
-                repository.updateCounsellor(
-                    counsellorId = counsellorId,
-                    fullName = state.fullName,
-                    email = state.email,
-                    specialisations = state.specialisations,
-                    languages = languages,
-                    bio = state.bio,
-                )
+            val result = try {
+                val email = Email.of(state.email)
+                val categories = state.specialisations.map { value ->
+                    ConcernCategory.fromWire(value)
+                        ?: throw DomainException("Unknown specialisation: $value")
+                }
+                if (counsellorId == null) {
+                    repository.createCounsellor(
+                        fullName = state.fullName,
+                        email = email,
+                        specialisations = categories,
+                        languages = languages,
+                        bio = state.bio,
+                    )
+                } else {
+                    repository.updateCounsellor(
+                        counsellorId = counsellorId,
+                        fullName = state.fullName,
+                        email = email,
+                        specialisations = categories,
+                        languages = languages,
+                        bio = state.bio,
+                        isActive = currentIsActive,
+                    )
+                }
+            } catch (error: DomainException) {
+                Result.failure<Counsellor>(error)
             }
             _uiState.update { it.copy(isSaving = false) }
             result.onSuccess {
                 _uiState.update { it.copy(saveSuccess = true) }
-                _messages.send(
-                    UiMessage(
-                        if (counsellorId == null) {
-                            "Counsellor added. Their Auth account can be created using this email."
-                        } else {
-                            "Counsellor details updated."
-                        },
-                        MessageKind.SUCCESS,
-                    ),
+                postSuccess(
+                    if (counsellorId == null) {
+                        "Counsellor added. Their Auth account can be created using this email."
+                    } else {
+                        "Counsellor details updated."
+                    },
                 )
             }.onFailure {
-                _messages.send(
-                    UiMessage(
-                        it.message ?: "Could not save the counsellor.",
-                        MessageKind.ERROR,
-                    ),
-                )
+                postError(it.message ?: "Could not save the counsellor.")
             }
         }
     }
@@ -169,12 +172,13 @@ class CounsellorFormViewModel(
                             it.copy(isLoading = false, loadError = "That counsellor could not be found.")
                         }
                     } else {
+                        currentIsActive = counsellor.isActive
                         _uiState.update {
                             it.copy(
                                 isLoading = false,
                                 fullName = counsellor.fullName,
-                                email = counsellor.email,
-                                specialisations = counsellor.specialisations,
+                                email = counsellor.email.value,
+                                specialisations = counsellor.specialisations.map { category -> category.label },
                                 languagesText = counsellor.languages.joinToString(", "),
                                 bio = counsellor.bio,
                             )

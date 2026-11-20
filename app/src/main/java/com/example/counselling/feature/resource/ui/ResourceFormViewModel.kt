@@ -1,20 +1,21 @@
 // Module 5 | Owner: Michael
 package com.example.counselling.feature.resource.ui
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.counselling.core.AppConstants
-import com.example.counselling.core.MessageKind
-import com.example.counselling.core.UiMessage
-import com.example.counselling.feature.resource.data.ResourceRepository
-import com.example.counselling.feature.resource.model.ResourceInsert
-import kotlinx.coroutines.channels.Channel
+import com.example.counselling.core.domain.ConcernCategory
+import com.example.counselling.core.domain.DomainException
+import com.example.counselling.core.domain.StressBracket
+import com.example.counselling.core.ui.BaseViewModel
+import com.example.counselling.feature.resource.domain.Resource
+import com.example.counselling.feature.resource.domain.ResourceDraft
+import com.example.counselling.feature.resource.domain.ResourceRepository
+import com.example.counselling.feature.resource.domain.ResourceType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -39,18 +40,21 @@ data class ResourceFormUiState(
     val saveSuccess: Boolean = false,
 )
 
+// OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
+
 class ResourceFormViewModel(
     private val resourceId: String?,
     private val repository: ResourceRepository,
-) : ViewModel() {
+) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(
         ResourceFormUiState(isEdit = resourceId != null, isLoading = resourceId != null),
     )
     val uiState: StateFlow<ResourceFormUiState> = _uiState.asStateFlow()
 
-    private val _messages = Channel<UiMessage>(Channel.BUFFERED)
-    val messages = _messages.receiveAsFlow()
+    // Existing hotline contact fields are preserved by the aggregate update.
+    private var phoneNumber: String? = null
+    private var operatingHours: String? = null
 
     init {
         if (resourceId != null) load()
@@ -136,35 +140,39 @@ class ResourceFormViewModel(
             return
         }
 
-        val input = ResourceInsert(
+        val category = ConcernCategory.fromWire(state.category)
+        val type = runCatching { ResourceType.fromLabel(state.mediaType) }.getOrNull()
+        val brackets = state.targetBrackets.mapNotNull(StressBracket::fromWire).toSet()
+        if (category == null || type == null || brackets.isEmpty()) {
+            postError("Choose a valid category, media type and wellbeing bracket.")
+            return
+        }
+        val draft = ResourceDraft(
             title = state.title.trim(),
             description = state.description.trim(),
-            category = state.category,
-            mediaType = state.mediaType,
+            category = category,
+            type = type,
             contentUrl = state.contentUrl.trim(),
-            targetStressBrackets = state.targetBrackets,
+            targetBrackets = brackets,
             isPublished = state.isPublished,
+            phoneNumber = phoneNumber,
+            operatingHours = operatingHours,
         )
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true) }
-            val result = if (resourceId == null) {
-                repository.createResource(input)
-            } else {
-                repository.updateResource(resourceId, input)
+            val result = try {
+                draft.validate()
+                if (resourceId == null) repository.createResource(draft)
+                else repository.updateResource(resourceId, draft)
+            } catch (error: DomainException) {
+                Result.failure<Resource>(error)
             }
             _uiState.update { it.copy(isSaving = false) }
             result.onSuccess {
                 _uiState.update { it.copy(saveSuccess = true) }
-                _messages.send(
-                    UiMessage(
-                        if (resourceId == null) "Resource added." else "Resource updated.",
-                        MessageKind.SUCCESS,
-                    ),
-                )
+                postSuccess(if (resourceId == null) "Resource added." else "Resource updated.")
             }.onFailure {
-                _messages.send(
-                    UiMessage(it.message ?: "Could not save the resource.", MessageKind.ERROR),
-                )
+                postError(it.message ?: "Could not save the resource.")
             }
         }
     }
@@ -173,20 +181,22 @@ class ResourceFormViewModel(
         val id = resourceId ?: return
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, loadError = null) }
-            repository.getResources()
-                .onSuccess { resources ->
-                    val resource = resources.firstOrNull { it.id == id }
+            repository.getResource(id)
+                .onSuccess { resource ->
                     if (resource == null) {
                         _uiState.update {
                             it.copy(isLoading = false, loadError = "That resource could not be found.")
                         }
                     } else {
+                        val hotline = resource as? com.example.counselling.feature.resource.domain.HotlineResource
+                        phoneNumber = hotline?.phoneNumber
+                        operatingHours = hotline?.operatingHours
                         _uiState.update {
                             it.copy(
                                 isLoading = false,
                                 title = resource.title,
                                 description = resource.description,
-                                category = resource.category,
+                                category = resource.category.label,
                                 mediaType = resource.mediaType,
                                 contentUrl = resource.contentUrl,
                                 targetBrackets = resource.targetStressBrackets,

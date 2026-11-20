@@ -1,0 +1,4162 @@
+-- ============================================================================
+-- University Counselling Appointment & Support System
+-- OOP refactor migration
+-- Owner: shared backend
+--
+-- PURPOSE
+--   Non-destructively moves the old flat schema into a `legacy` schema,
+--   creates the new class-table-inheritance schema, copies every row, verifies
+--   the copy, and then leaves the legacy tables in place for rollback.
+--
+-- APPLY ON A COPY OF THE SUPABASE PROJECT FIRST. Do not run this against the
+-- live demo until the copy has been tested.
+--
+-- DOES NOT DROP OLD TABLES. Use optional_drop_old_tables.sql only after the
+-- verification block at the end of this migration succeeds.
+-- ============================================================================
+
+begin;
+
+-- ----------------------------------------------------------------------------
+-- 1. Preflight: current schema version and data that cannot be mapped cleanly
+-- ----------------------------------------------------------------------------
+
+do $preflight$
+begin
+    if to_regclass('public.profiles') is null
+       or to_regclass('public.counsellors') is null
+       or to_regclass('public.admin_whitelist') is null
+       or to_regclass('public.availability_slots') is null
+       or to_regclass('public.appointments') is null
+       or to_regclass('public.session_records') is null
+       or to_regclass('public.resources') is null
+       or to_regclass('public.enquiries') is null
+       or to_regclass('public.feedback') is null then
+        raise exception 'This migration expects the old nine-table schema in public.';
+    end if;
+
+    if exists (
+        select 1 from information_schema.schemata where schema_name = 'legacy'
+    ) then
+        raise exception 'Schema "legacy" already exists. This migration is one-time; restore a backup or inspect the previous attempt.';
+    end if;
+
+    if exists (
+        select 1
+        from public.profiles p
+        join public.counsellors c on c.id = p.id
+    ) then
+        raise exception 'A profile id collides with a counsellor id. Resolve the UUID collision before migrating.';
+    end if;
+
+    if exists (
+        select 1
+        from public.profiles p
+        where p.role = 'counsellor'
+          and not exists (
+              select 1 from public.counsellors c where c.user_id = p.id
+          )
+    ) then
+        raise exception 'A counsellor profile has no matching counsellor directory row. Repair it before migrating.';
+    end if;
+
+    if exists (
+        select 1
+        from public.admin_whitelist aw
+        join public.profiles p on lower(p.email) = lower(aw.email)
+        where p.role <> 'admin'
+    ) then
+        raise exception 'An admin_whitelist email belongs to a non-admin profile. Resolve it before migrating.';
+    end if;
+
+    if exists (
+        select 1
+        from public.admin_whitelist aw
+        join public.counsellors c on lower(c.email) = lower(aw.email)
+    ) then
+        raise exception 'An admin_whitelist email belongs to a counsellor directory row. Resolve it before migrating.';
+    end if;
+
+    if exists (
+        select lower(email)
+        from (
+            select email from public.profiles where role in ('student', 'admin')
+            union all
+            select email from public.counsellors
+            union all
+            select aw.email
+            from public.admin_whitelist aw
+            where not exists (
+                select 1 from public.profiles p
+                where lower(p.email) = lower(aw.email)
+            )
+              and not exists (
+                select 1 from public.counsellors c
+                where lower(c.email) = lower(aw.email)
+            )
+        ) emails
+        group by lower(email)
+        having count(*) > 1
+    ) then
+        raise exception 'The old data contains duplicate email addresses across profiles/counsellors/admin_whitelist. Resolve them before migrating.';
+    end if;
+
+    if exists (
+        select 1
+        from public.counsellors c
+        where c.specialisations is null
+           or array_length(c.specialisations, 1) is null
+           or c.languages is null
+           or array_length(c.languages, 1) is null
+    ) then
+        raise exception 'A counsellor has no specialisations/languages. Resolve it before migrating.';
+    end if;
+end;
+$preflight$;
+
+-- ----------------------------------------------------------------------------
+-- 2. Preserve the old public objects in a legacy schema
+-- ----------------------------------------------------------------------------
+
+-- The old trigger function reads public.profiles. Drop the trigger before the
+-- table moves; the new schema section recreates it against public.users.
+drop trigger if exists on_auth_user_created on auth.users;
+
+create schema legacy;
+
+revoke all on schema legacy from public, anon, authenticated;
+
+alter view public.student_session_summaries set schema legacy;
+alter view public.available_slots_view set schema legacy;
+
+alter table public.feedback set schema legacy;
+alter table public.session_records set schema legacy;
+alter table public.appointments set schema legacy;
+alter table public.availability_slots set schema legacy;
+alter table public.resources set schema legacy;
+alter table public.enquiries set schema legacy;
+alter table public.counsellors set schema legacy;
+alter table public.admin_whitelist set schema legacy;
+alter table public.profiles set schema legacy;
+
+revoke all on all tables in schema legacy from public, anon, authenticated;
+revoke all on all sequences in schema legacy from public, anon, authenticated;
+
+-- ============================================================================
+-- 3. New schema DDL (mirrors supabase/schema.sql)
+-- ============================================================================
+
+create schema if not exists extensions;
+create extension if not exists btree_gist with schema extensions;
+set search_path = public, extensions;
+
+-- ============================================================================
+-- 1. REFERENCE / VOCABULARY TABLES
+-- ============================================================================
+-- OOP: These replace free-text CHECK lists. They are immutable value
+-- vocabularies shared by the domain objects and the database functions.
+
+create table public.concern_categories (
+    code text primary key
+        check (code ~ '^[a-z0-9_]+$'),
+    label text not null unique
+        check (char_length(btrim(label)) between 2 and 80),
+    sort_order smallint not null unique
+);
+
+create table public.session_modes (
+    code text primary key
+        check (code ~ '^[a-z0-9_]+$'),
+    label text not null unique
+        check (char_length(btrim(label)) between 2 and 40),
+    sort_order smallint not null unique
+);
+
+create table public.risk_levels (
+    code text primary key
+        check (code ~ '^[a-z0-9_]+$'),
+    label text not null unique
+        check (char_length(btrim(label)) between 2 and 40),
+    rank smallint not null unique
+);
+
+create table public.stress_brackets (
+    code text primary key
+        check (code ~ '^[a-z0-9_]+$'),
+    label text not null unique,
+    min_score smallint not null check (min_score >= 0),
+    max_score smallint not null check (max_score >= min_score),
+    sort_order smallint not null unique,
+    constraint stress_brackets_score_window unique (min_score, max_score)
+);
+
+create table public.appointment_statuses (
+    code text primary key
+        check (code ~ '^[a-z0-9_]+$'),
+    label text not null unique,
+    is_terminal boolean not null default false,
+    sort_order smallint not null unique
+);
+
+create table public.appointment_status_transitions (
+    from_status_code text not null
+        references public.appointment_statuses (code) on delete cascade,
+    to_status_code text not null
+        references public.appointment_statuses (code) on delete cascade,
+    primary key (from_status_code, to_status_code),
+    constraint appointment_status_transition_not_self
+        check (from_status_code <> to_status_code)
+);
+
+create table public.languages (
+    language_id smallint generated by default as identity primary key,
+    name text not null
+        check (char_length(btrim(name)) between 2 and 60)
+);
+
+create unique index languages_name_lower_uidx
+    on public.languages (lower(name));
+
+-- ============================================================================
+-- 2. USER GENERALISATION / SPECIALISATION
+-- ============================================================================
+
+-- OOP: User is the abstract superclass in the class model. This table stores
+-- only common identity state; Student/Counsellor/Administrator are subtypes.
+create table public.users (
+    id uuid primary key default gen_random_uuid(),
+    auth_user_id uuid unique references auth.users (id) on delete set null,
+    email text not null,
+    full_name text not null,
+    phone text,
+    is_active boolean not null default true,
+    user_type text not null
+        check (user_type in ('student', 'counsellor', 'administrator')),
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    constraint users_full_name_length
+        check (char_length(btrim(full_name)) between 2 and 100),
+    constraint users_email_format
+        check (email ~* '^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$'),
+    constraint users_phone_format
+        check (
+            phone is null
+            or phone ~ '^(01[0-9]-[0-9]{7}|\+601[0-9][0-9]{7,8})$'
+        ),
+    constraint users_id_user_type_key unique (id, user_type)
+);
+
+create unique index users_email_lower_uidx
+    on public.users (lower(email));
+
+create index users_user_type_idx on public.users (user_type);
+create index users_is_active_idx on public.users (is_active);
+
+-- OOP: Inheritance - Student extends User with academic attributes.
+create table public.students (
+    user_id uuid primary key
+        references public.users (id) on delete cascade,
+    user_type text not null default 'student'
+        check (user_type = 'student'),
+    student_id text not null,
+    programme text not null,
+    preferred_session_mode text not null default 'in_person'
+        references public.session_modes (code),
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    constraint students_student_id_length
+        check (char_length(btrim(student_id)) between 3 and 30),
+    constraint students_programme_length
+        check (char_length(btrim(programme)) between 2 and 120),
+    constraint students_user_type_key unique (user_id, user_type),
+    constraint students_user_type_fkey
+        foreign key (user_id, user_type)
+        references public.users (id, user_type)
+        on delete cascade
+);
+
+create unique index students_student_id_lower_uidx
+    on public.students (lower(student_id));
+create index students_programme_idx on public.students (programme);
+
+-- OOP: Inheritance - Counsellor extends User and HAS-MANY availability slots.
+create table public.counsellors (
+    user_id uuid primary key
+        references public.users (id) on delete cascade,
+    user_type text not null default 'counsellor'
+        check (user_type = 'counsellor'),
+    bio text not null default '',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    constraint counsellors_bio_length
+        check (char_length(btrim(bio)) <= 2000),
+    constraint counsellors_user_type_key unique (user_id, user_type),
+    constraint counsellors_user_type_fkey
+        foreign key (user_id, user_type)
+        references public.users (id, user_type)
+        on delete cascade
+);
+
+-- OOP: Inheritance - Administrator extends User. It has no extra attributes;
+-- the subtype row is what makes the role a real object, not a string.
+create table public.administrators (
+    user_id uuid primary key
+        references public.users (id) on delete cascade,
+    user_type text not null default 'administrator'
+        check (user_type = 'administrator'),
+    created_at timestamptz not null default now(),
+    constraint administrators_user_type_key unique (user_id, user_type),
+    constraint administrators_user_type_fkey
+        foreign key (user_id, user_type)
+        references public.users (id, user_type)
+        on delete cascade
+);
+
+-- ============================================================================
+-- 3. ASSOCIATION TABLES (replace text[] arrays)
+-- ============================================================================
+-- OOP: Composition/association - Counsellor HAS-MANY specialisations and
+-- languages through separate rows instead of a multi-valued column.
+
+create table public.counsellor_specialisations (
+    counsellor_id uuid not null
+        references public.counsellors (user_id) on delete cascade,
+    category_code text not null
+        references public.concern_categories (code) on delete restrict,
+    primary key (counsellor_id, category_code)
+);
+
+create table public.counsellor_languages (
+    counsellor_id uuid not null
+        references public.counsellors (user_id) on delete cascade,
+    language_id smallint not null
+        references public.languages (language_id) on delete restrict,
+    primary key (counsellor_id, language_id)
+);
+
+-- ============================================================================
+-- 4. AVAILABILITY, APPOINTMENTS, RECORDS, FEEDBACK
+-- ============================================================================
+
+-- OOP: Counsellor HAS-MANY AvailabilitySlot; each slot HAS-A TimeSlot range.
+create table public.availability_slots (
+    id uuid primary key default gen_random_uuid(),
+    counsellor_id uuid not null
+        references public.counsellors (user_id) on delete cascade,
+    start_at timestamptz not null,
+    end_at timestamptz not null,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    constraint availability_slots_time_order check (end_at > start_at),
+    constraint availability_slots_exact_window_key
+        unique (counsellor_id, start_at, end_at),
+    constraint availability_slots_no_overlap
+        exclude using gist (
+            counsellor_id with =,
+            tstzrange(start_at, end_at, '[)') with &&
+        )
+);
+
+create index availability_slots_counsellor_start_idx
+    on public.availability_slots (counsellor_id, start_at);
+
+-- OOP: Appointment HAS-A Student, Counsellor, AvailabilitySlot/TimeSlot and
+-- AppointmentStatus. Status is a reference object (State pattern), not a
+-- free-text column.
+create table public.appointments (
+    id uuid primary key default gen_random_uuid(),
+    student_id uuid not null
+        references public.students (user_id) on delete restrict,
+    counsellor_id uuid not null
+        references public.counsellors (user_id) on delete restrict,
+    slot_id uuid not null
+        references public.availability_slots (id) on delete restrict,
+    mode_code text not null
+        references public.session_modes (code),
+    concern_code text not null
+        references public.concern_categories (code),
+    note text,
+    status_code text not null default 'pending'
+        references public.appointment_statuses (code),
+    follow_up_of uuid references public.appointments (id) on delete set null,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    constraint appointments_note_length
+        check (note is null or char_length(btrim(note)) <= 1000),
+    constraint appointments_follow_up_not_self
+        check (follow_up_of is null or follow_up_of <> id)
+);
+
+-- One slot can be held by at most one active appointment.
+create unique index appointments_active_slot_uidx
+    on public.appointments (slot_id)
+    where status_code in ('pending', 'confirmed');
+
+create index appointments_student_idx on public.appointments (student_id);
+create index appointments_counsellor_idx on public.appointments (counsellor_id);
+create index appointments_slot_idx on public.appointments (slot_id);
+create index appointments_status_idx on public.appointments (status_code);
+create index appointments_follow_up_of_idx on public.appointments (follow_up_of);
+
+-- OOP: SessionRecord HAS-A Appointment, RiskLevel and FollowUp. It is a
+-- composition: the record cannot exist without its appointment.
+create table public.session_records (
+    id uuid primary key default gen_random_uuid(),
+    appointment_id uuid not null unique
+        references public.appointments (id) on delete restrict,
+    counsellor_id uuid not null
+        references public.counsellors (user_id) on delete restrict,
+    student_id uuid not null
+        references public.students (user_id) on delete restrict,
+    private_notes text not null,
+    public_summary text not null,
+    risk_code text not null
+        references public.risk_levels (code),
+    follow_up_needed boolean not null default false,
+    follow_up_due timestamptz,
+    is_archived boolean not null default false,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    constraint session_records_private_notes_length
+        check (char_length(btrim(private_notes)) between 20 and 5000),
+    constraint session_records_public_summary_length
+        check (char_length(btrim(public_summary)) between 1 and 2000),
+    constraint session_records_follow_up_consistency
+        check (
+            (follow_up_needed and follow_up_due is not null)
+            or (not follow_up_needed and follow_up_due is null)
+        )
+);
+
+create index session_records_counsellor_idx
+    on public.session_records (counsellor_id);
+create index session_records_student_idx
+    on public.session_records (student_id);
+create index session_records_due_idx
+    on public.session_records (follow_up_due)
+    where follow_up_needed and not is_archived;
+
+-- OOP: Feedback HAS-A Rating value object and is associated with one
+-- completed Appointment.
+create table public.feedback (
+    id uuid primary key default gen_random_uuid(),
+    appointment_id uuid not null unique
+        references public.appointments (id) on delete restrict,
+    student_id uuid not null
+        references public.students (user_id) on delete restrict,
+    counsellor_id uuid not null
+        references public.counsellors (user_id) on delete restrict,
+    rating integer not null check (rating between 1 and 5),
+    comment text,
+    created_at timestamptz not null default now(),
+    constraint feedback_comment_length
+        check (comment is null or char_length(btrim(comment)) between 1 and 500)
+);
+
+create index feedback_counsellor_idx on public.feedback (counsellor_id);
+create index feedback_student_idx on public.feedback (student_id);
+
+-- ============================================================================
+-- 5. RESOURCE GENERALISATION / SPECIALISATION
+-- ============================================================================
+
+-- OOP: Resource is an abstract superclass. Article/Video/Audio/PDF/Hotline
+-- subclasses share this identity and add only their own attributes.
+create table public.resources (
+    id uuid primary key default gen_random_uuid(),
+    title text not null,
+    description text not null,
+    category_code text not null
+        references public.concern_categories (code),
+    resource_type text not null
+        check (resource_type in ('article', 'video', 'audio', 'pdf', 'hotline')),
+    is_published boolean not null default false,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    constraint resources_title_length
+        check (char_length(btrim(title)) between 3 and 120),
+    constraint resources_description_length
+        check (char_length(btrim(description)) between 10 and 2000),
+    constraint resources_id_type_key unique (id, resource_type)
+);
+
+create unique index resources_title_lower_uidx
+    on public.resources (lower(title));
+create index resources_category_idx on public.resources (category_code);
+create index resources_type_idx on public.resources (resource_type);
+
+-- OOP: Inheritance - ArticleResource extends Resource (own attribute: URL).
+create table public.article_resources (
+    resource_id uuid primary key,
+    resource_type text not null default 'article'
+        check (resource_type = 'article'),
+    content_url text not null,
+    constraint article_resources_url_valid
+        check (content_url ~* '^https?://[^[:space:]]+$'),
+    constraint article_resources_type_key unique (resource_id, resource_type),
+    constraint article_resources_type_fkey
+        foreign key (resource_id, resource_type)
+        references public.resources (id, resource_type)
+        on delete cascade
+);
+
+-- OOP: Inheritance - VideoResource extends Resource.
+create table public.video_resources (
+    resource_id uuid primary key,
+    resource_type text not null default 'video'
+        check (resource_type = 'video'),
+    content_url text not null,
+    constraint video_resources_url_valid
+        check (content_url ~* '^https?://[^[:space:]]+$'),
+    constraint video_resources_type_key unique (resource_id, resource_type),
+    constraint video_resources_type_fkey
+        foreign key (resource_id, resource_type)
+        references public.resources (id, resource_type)
+        on delete cascade
+);
+
+-- OOP: Inheritance - AudioResource extends Resource.
+create table public.audio_resources (
+    resource_id uuid primary key,
+    resource_type text not null default 'audio'
+        check (resource_type = 'audio'),
+    content_url text not null,
+    constraint audio_resources_url_valid
+        check (content_url ~* '^https?://[^[:space:]]+$'),
+    constraint audio_resources_type_key unique (resource_id, resource_type),
+    constraint audio_resources_type_fkey
+        foreign key (resource_id, resource_type)
+        references public.resources (id, resource_type)
+        on delete cascade
+);
+
+-- OOP: Inheritance - PdfResource extends Resource.
+create table public.pdf_resources (
+    resource_id uuid primary key,
+    resource_type text not null default 'pdf'
+        check (resource_type = 'pdf'),
+    content_url text not null,
+    constraint pdf_resources_url_valid
+        check (content_url ~* '^https?://[^[:space:]]+$'),
+    constraint pdf_resources_type_key unique (resource_id, resource_type),
+    constraint pdf_resources_type_fkey
+        foreign key (resource_id, resource_type)
+        references public.resources (id, resource_type)
+        on delete cascade
+);
+
+-- OOP: Inheritance - HotlineResource extends Resource with contact attributes
+-- and no mandatory web content URL.
+create table public.hotline_resources (
+    resource_id uuid primary key,
+    resource_type text not null default 'hotline'
+        check (resource_type = 'hotline'),
+    phone_number text,
+    operating_hours text,
+    website_url text,
+    constraint hotline_resources_phone_format
+        check (
+            phone_number is null
+            or phone_number ~ '^\+?[0-9][0-9 ()-]{4,29}$'
+        ),
+    constraint hotline_resources_hours_length
+        check (operating_hours is null or char_length(btrim(operating_hours)) between 1 and 120),
+    constraint hotline_resources_url_valid
+        check (website_url is null or website_url ~* '^https?://[^[:space:]]+$'),
+    constraint hotline_resources_type_key unique (resource_id, resource_type),
+    constraint hotline_resources_type_fkey
+        foreign key (resource_id, resource_type)
+        references public.resources (id, resource_type)
+        on delete cascade
+);
+
+create table public.resource_target_brackets (
+    resource_id uuid not null
+        references public.resources (id) on delete cascade,
+    bracket_code text not null
+        references public.stress_brackets (code) on delete restrict,
+    primary key (resource_id, bracket_code)
+);
+
+-- ============================================================================
+-- 6. ENQUIRY GENERALISATION / SPECIALISATION
+-- ============================================================================
+-- OOP: Enquiry is an abstract superclass; IdentifiedEnquiry and
+-- AnonymousEnquiry are the two concrete subclasses.
+
+create table public.enquiries (
+    id uuid primary key default gen_random_uuid(),
+    reference_code text not null unique,
+    category_code text not null
+        references public.concern_categories (code),
+    message text not null,
+    status text not null default 'open'
+        check (status in ('open', 'answered', 'closed')),
+    reply text,
+    recommended_resource_id uuid
+        references public.resources (id) on delete set null,
+    replied_at timestamptz,
+    enquiry_type text not null
+        check (enquiry_type in ('identified', 'anonymous')),
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    constraint enquiries_reference_code_format
+        check (reference_code ~ '^ENQ-[A-Z0-9]{6}$'),
+    constraint enquiries_message_length
+        check (char_length(btrim(message)) between 10 and 1000),
+    constraint enquiries_reply_length
+        check (reply is null or char_length(btrim(reply)) between 1 and 2000),
+    constraint enquiries_id_type_key unique (id, enquiry_type)
+);
+
+create index enquiries_status_idx on public.enquiries (status);
+create index enquiries_category_idx on public.enquiries (category_code);
+create index enquiries_created_idx on public.enquiries (created_at desc);
+
+-- OOP: IdentifiedEnquiry has an associated Student.
+create table public.identified_enquiries (
+    enquiry_id uuid primary key,
+    enquiry_type text not null default 'identified'
+        check (enquiry_type = 'identified'),
+    student_id uuid not null
+        references public.students (user_id) on delete restrict,
+    constraint identified_enquiries_type_key unique (enquiry_id, enquiry_type),
+    constraint identified_enquiries_type_fkey
+        foreign key (enquiry_id, enquiry_type)
+        references public.enquiries (id, enquiry_type)
+        on delete cascade
+);
+
+create index identified_enquiries_student_idx
+    on public.identified_enquiries (student_id);
+
+-- OOP: AnonymousEnquiry has no student association. The reference code is
+-- deliberately on the supertype because linked enquiries also use codes in
+-- this application. No identity columns are stored here.
+create table public.anonymous_enquiries (
+    enquiry_id uuid primary key,
+    enquiry_type text not null default 'anonymous'
+        check (enquiry_type = 'anonymous'),
+    constraint anonymous_enquiries_type_key unique (enquiry_id, enquiry_type),
+    constraint anonymous_enquiries_type_fkey
+        foreign key (enquiry_id, enquiry_type)
+        references public.enquiries (id, enquiry_type)
+        on delete cascade
+);
+
+-- ============================================================================
+-- 7. SMALL HELPERS
+-- ============================================================================
+
+-- Returns the public users.id for the signed-in Auth account, only while the
+-- account is active. RLS uses this for active access.
+create or replace function public.app_user_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public, auth
+as $function$
+    select u.id
+    from public.users u
+    where u.auth_user_id = auth.uid()
+      and u.is_active = true;
+$function$;
+
+-- Returns users.id even for a deactivated account so the app can detect and
+-- sign out an inactive login.
+create or replace function public.app_identity_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public, auth
+as $function$
+    select u.id
+    from public.users u
+    where u.auth_user_id = auth.uid();
+$function$;
+
+create or replace function public.app_role()
+returns text
+language sql
+stable
+security definer
+set search_path = public, auth
+as $function$
+    select u.user_type
+    from public.users u
+    where u.auth_user_id = auth.uid()
+      and u.is_active = true;
+$function$;
+
+create or replace function public.app_counsellor_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public, auth
+as $function$
+    select u.id
+    from public.users u
+    join public.counsellors c on c.user_id = u.id
+    where u.auth_user_id = auth.uid()
+      and u.is_active = true
+      and u.user_type = 'counsellor';
+$function$;
+
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+set search_path = public
+as $function$
+begin
+    new.updated_at := now();
+    return new;
+end;
+$function$;
+
+-- Resolve UI labels/codes once, so every RPC accepts the same strings as the
+-- old app while storing a foreign key.
+create or replace function public.resolve_concern_category(p_value text)
+returns text
+language sql
+stable
+set search_path = public
+as $function$
+    select c.code
+    from public.concern_categories c
+    where c.code = lower(btrim(coalesce(p_value, '')))
+       or lower(c.label) = lower(btrim(coalesce(p_value, '')))
+    limit 1;
+$function$;
+
+create or replace function public.resolve_session_mode(p_value text)
+returns text
+language sql
+stable
+set search_path = public
+as $function$
+    select m.code
+    from public.session_modes m
+    where m.code = lower(btrim(coalesce(p_value, '')))
+       or lower(m.label) = lower(btrim(coalesce(p_value, '')))
+    limit 1;
+$function$;
+
+create or replace function public.resolve_stress_bracket(p_value text)
+returns text
+language sql
+stable
+set search_path = public
+as $function$
+    select b.code
+    from public.stress_brackets b
+    where b.code = lower(btrim(coalesce(p_value, '')))
+       or lower(b.label) = lower(btrim(coalesce(p_value, '')))
+    limit 1;
+$function$;
+
+create or replace function public.resolve_resource_type(p_value text)
+returns text
+language sql
+immutable
+set search_path = public
+as $function$
+    select case lower(btrim(coalesce(p_value, '')))
+        when 'article' then 'article'
+        when 'video' then 'video'
+        when 'audio' then 'audio'
+        when 'pdf' then 'pdf'
+        when 'hotline' then 'hotline'
+        else null
+    end;
+$function$;
+
+-- ============================================================================
+-- 8. TABLE TRIGGERS
+-- ============================================================================
+
+drop trigger if exists trg_users_updated_at on public.users;
+create trigger trg_users_updated_at
+before update on public.users
+for each row execute function public.set_updated_at();
+
+drop trigger if exists trg_students_updated_at on public.students;
+create trigger trg_students_updated_at
+before update on public.students
+for each row execute function public.set_updated_at();
+
+drop trigger if exists trg_counsellors_updated_at on public.counsellors;
+create trigger trg_counsellors_updated_at
+before update on public.counsellors
+for each row execute function public.set_updated_at();
+
+drop trigger if exists trg_availability_slots_updated_at on public.availability_slots;
+create trigger trg_availability_slots_updated_at
+before update on public.availability_slots
+for each row execute function public.set_updated_at();
+
+drop trigger if exists trg_appointments_updated_at on public.appointments;
+create trigger trg_appointments_updated_at
+before update on public.appointments
+for each row execute function public.set_updated_at();
+
+drop trigger if exists trg_session_records_updated_at on public.session_records;
+create trigger trg_session_records_updated_at
+before update on public.session_records
+for each row execute function public.set_updated_at();
+
+drop trigger if exists trg_resources_updated_at on public.resources;
+create trigger trg_resources_updated_at
+before update on public.resources
+for each row execute function public.set_updated_at();
+
+drop trigger if exists trg_enquiries_updated_at on public.enquiries;
+create trigger trg_enquiries_updated_at
+before update on public.enquiries
+for each row execute function public.set_updated_at();
+
+-- ----------------------------------------------------------------------------
+-- Availability rules
+-- ----------------------------------------------------------------------------
+
+create or replace function public.validate_availability_slot()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $function$
+begin
+    if new.end_at <= new.start_at then
+        raise exception 'The end time must be after the start time.';
+    end if;
+
+    if new.start_at < now() then
+        raise exception 'Availability cannot be created or moved into the past.';
+    end if;
+
+    if not exists (
+        select 1
+        from public.counsellors c
+        join public.users u on u.id = c.user_id
+        where c.user_id = new.counsellor_id
+          and u.is_active = true
+    ) then
+        raise exception 'This counsellor is inactive and cannot receive new availability.';
+    end if;
+
+    if tg_op = 'UPDATE' then
+        if exists (
+            select 1 from public.appointments a where a.slot_id = old.id
+        ) then
+            raise exception 'This slot is linked to an appointment and can no longer be edited.';
+        end if;
+    end if;
+
+    if exists (
+        select 1
+        from public.availability_slots s
+        where s.counsellor_id = new.counsellor_id
+          and s.id <> new.id
+          and s.start_at < new.end_at
+          and s.end_at > new.start_at
+    ) then
+        raise exception 'This slot overlaps another slot for the same counsellor.';
+    end if;
+
+    return new;
+end;
+$function$;
+
+drop trigger if exists trg_availability_slot_guard on public.availability_slots;
+create trigger trg_availability_slot_guard
+before insert or update of counsellor_id, start_at, end_at on public.availability_slots
+for each row execute function public.validate_availability_slot();
+
+create or replace function public.prevent_booked_slot_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $function$
+begin
+    if exists (
+        select 1 from public.appointments a where a.slot_id = old.id
+    ) then
+        raise exception 'This slot is linked to an appointment and cannot be deleted.';
+    end if;
+    return old;
+end;
+$function$;
+
+drop trigger if exists trg_availability_slot_delete on public.availability_slots;
+create trigger trg_availability_slot_delete
+before delete on public.availability_slots
+for each row execute function public.prevent_booked_slot_delete();
+
+-- ----------------------------------------------------------------------------
+-- Appointment rules
+-- ----------------------------------------------------------------------------
+
+create or replace function public.validate_appointment_counsellor()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $function$
+begin
+    if not exists (
+        select 1
+        from public.availability_slots s
+        where s.id = new.slot_id
+          and s.counsellor_id = new.counsellor_id
+    ) then
+        raise exception 'The selected time slot does not belong to this counsellor.';
+    end if;
+    return new;
+end;
+$function$;
+
+drop trigger if exists trg_appointment_counsellor_guard on public.appointments;
+create trigger trg_appointment_counsellor_guard
+before insert or update of slot_id, counsellor_id on public.appointments
+for each row execute function public.validate_appointment_counsellor();
+
+-- OOP: The transition table is the database representation of the State
+-- pattern. The Kotlin AppointmentStatus objects mirror these same rows.
+create or replace function public.enforce_appointment_status_transition()
+returns trigger
+language plpgsql
+set search_path = public
+as $function$
+begin
+    if new.status_code is distinct from old.status_code then
+        if not exists (
+            select 1
+            from public.appointment_status_transitions t
+            where t.from_status_code = old.status_code
+              and t.to_status_code = new.status_code
+        ) then
+            raise exception 'That appointment status change is not allowed.';
+        end if;
+    end if;
+    return new;
+end;
+$function$;
+
+drop trigger if exists trg_appointment_status_transition on public.appointments;
+create trigger trg_appointment_status_transition
+before update of status_code on public.appointments
+for each row execute function public.enforce_appointment_status_transition();
+
+-- ----------------------------------------------------------------------------
+-- Session record rules
+-- ----------------------------------------------------------------------------
+
+create or replace function public.prepare_session_record()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $function$
+declare
+    v_appointment record;
+begin
+    select a.id, a.student_id, a.counsellor_id, a.status_code
+    into v_appointment
+    from public.appointments a
+    where a.id = new.appointment_id;
+
+    if not found then
+        raise exception 'That appointment could not be found.';
+    end if;
+
+    if v_appointment.status_code <> 'completed' then
+        raise exception 'Session records can only be added for completed appointments.';
+    end if;
+
+    if exists (
+        select 1
+        from public.session_records r
+        where r.appointment_id = new.appointment_id
+    ) then
+        raise exception 'A session record already exists for this appointment.';
+    end if;
+
+    new.counsellor_id := v_appointment.counsellor_id;
+    new.student_id := v_appointment.student_id;
+    new.created_at := now();
+    new.updated_at := now();
+    new.is_archived := false;
+
+    if new.follow_up_needed then
+        if new.follow_up_due is null then
+            raise exception 'Please choose a follow-up due date.';
+        end if;
+        if new.follow_up_due <= now() then
+            raise exception 'The follow-up due date must be in the future.';
+        end if;
+    else
+        new.follow_up_due := null;
+    end if;
+
+    return new;
+end;
+$function$;
+
+drop trigger if exists trg_session_record_prepare on public.session_records;
+create trigger trg_session_record_prepare
+before insert on public.session_records
+for each row execute function public.prepare_session_record();
+
+create or replace function public.guard_session_record_update()
+returns trigger
+language plpgsql
+set search_path = public
+as $function$
+begin
+    if new.appointment_id is distinct from old.appointment_id
+       or new.counsellor_id is distinct from old.counsellor_id
+       or new.student_id is distinct from old.student_id
+       or new.created_at is distinct from old.created_at then
+        raise exception 'The appointment and ownership of a session record cannot be changed.';
+    end if;
+
+    if new.is_archived is distinct from old.is_archived
+       and new.private_notes is not distinct from old.private_notes
+       and new.public_summary is not distinct from old.public_summary
+       and new.risk_code is not distinct from old.risk_code
+       and new.follow_up_needed is not distinct from old.follow_up_needed
+       and new.follow_up_due is not distinct from old.follow_up_due then
+        return new;
+    end if;
+
+    if now() > old.created_at + interval '7 days' then
+        raise exception 'Session records can only be edited within 7 days of creation.';
+    end if;
+
+    if new.follow_up_needed then
+        if new.follow_up_due is null then
+            raise exception 'Please choose a follow-up due date.';
+        end if;
+        if new.follow_up_needed is distinct from old.follow_up_needed
+           or new.follow_up_due is distinct from old.follow_up_due then
+            if new.follow_up_due <= now() then
+                raise exception 'The follow-up due date must be in the future.';
+            end if;
+        end if;
+    else
+        new.follow_up_due := null;
+    end if;
+
+    return new;
+end;
+$function$;
+
+drop trigger if exists trg_session_record_update on public.session_records;
+create trigger trg_session_record_update
+before update on public.session_records
+for each row execute function public.guard_session_record_update();
+
+create or replace function public.prevent_unarchived_session_record_delete()
+returns trigger
+language plpgsql
+set search_path = public
+as $function$
+begin
+    if not old.is_archived then
+        raise exception 'Archive this session record before deleting it permanently.';
+    end if;
+    return old;
+end;
+$function$;
+
+drop trigger if exists trg_session_record_delete_guard on public.session_records;
+create trigger trg_session_record_delete_guard
+before delete on public.session_records
+for each row execute function public.prevent_unarchived_session_record_delete();
+
+-- ----------------------------------------------------------------------------
+-- Feedback rules
+-- ----------------------------------------------------------------------------
+
+create or replace function public.prepare_feedback()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $function$
+declare
+    v_appointment record;
+begin
+    select a.id, a.student_id, a.counsellor_id, a.status_code
+    into v_appointment
+    from public.appointments a
+    where a.id = new.appointment_id;
+
+    if not found then
+        raise exception 'That appointment could not be found.';
+    end if;
+
+    if v_appointment.status_code <> 'completed' then
+        raise exception 'Feedback can only be added after a completed session.';
+    end if;
+
+    if exists (
+        select 1 from public.feedback f where f.appointment_id = new.appointment_id
+    ) then
+        raise exception 'You have already rated this session.';
+    end if;
+
+    new.student_id := v_appointment.student_id;
+    new.counsellor_id := v_appointment.counsellor_id;
+    new.comment := nullif(btrim(new.comment), '');
+    new.created_at := now();
+    return new;
+end;
+$function$;
+
+drop trigger if exists trg_feedback_prepare on public.feedback;
+create trigger trg_feedback_prepare
+before insert on public.feedback
+for each row execute function public.prepare_feedback();
+
+-- ----------------------------------------------------------------------------
+-- Enquiry reply rules
+-- ----------------------------------------------------------------------------
+
+create or replace function public.protect_enquiry_reply()
+returns trigger
+language plpgsql
+set search_path = public
+as $function$
+begin
+    if tg_op = 'UPDATE' then
+        if new.reference_code is distinct from old.reference_code
+           or new.category_code is distinct from old.category_code
+           or new.message is distinct from old.message
+           or new.enquiry_type is distinct from old.enquiry_type
+           or new.created_at is distinct from old.created_at then
+            raise exception 'Only the reply, status and recommended resource can be changed.';
+        end if;
+    end if;
+
+    if new.reply is not null then
+        new.reply := nullif(btrim(new.reply), '');
+    end if;
+
+    if new.status = 'answered' and new.reply is null then
+        raise exception 'Please write a reply before marking the enquiry as answered.';
+    end if;
+
+    if new.reply is null then
+        new.replied_at := null;
+    elsif tg_op = 'INSERT' then
+        new.replied_at := now();
+    elsif new.reply is distinct from old.reply then
+        new.replied_at := now();
+    end if;
+
+    return new;
+end;
+$function$;
+
+drop trigger if exists trg_enquiry_reply_guard on public.enquiries;
+create trigger trg_enquiry_reply_guard
+before insert or update on public.enquiries
+for each row execute function public.protect_enquiry_reply();
+
+-- ----------------------------------------------------------------------------
+-- Exactly-one subtype checks (OOP generalisation integrity)
+-- ----------------------------------------------------------------------------
+
+-- OOP: Generalisation integrity - a Resource must be exactly one concrete
+-- subclass; it cannot exist as a half-built object.
+create or replace function public.validate_resource_subtype()
+returns trigger
+language plpgsql
+set search_path = public
+as $function$
+declare
+    v_id uuid;
+    v_type text;
+    v_count integer;
+begin
+    if tg_table_name = 'resources' then
+        v_id := new.id;
+    elsif tg_op = 'DELETE' then
+        v_id := old.resource_id;
+    else
+        v_id := new.resource_id;
+    end if;
+
+    select r.resource_type into v_type
+    from public.resources r
+    where r.id = v_id;
+
+    if not found then
+        return null;
+    end if;
+
+    select count(*) into v_count
+    from (
+        select 1 from public.article_resources where resource_id = v_id
+        union all
+        select 1 from public.video_resources where resource_id = v_id
+        union all
+        select 1 from public.audio_resources where resource_id = v_id
+        union all
+        select 1 from public.pdf_resources where resource_id = v_id
+        union all
+        select 1 from public.hotline_resources where resource_id = v_id
+    ) subtypes;
+
+    if v_count <> 1 then
+        raise exception 'A resource must have exactly one matching subtype row.';
+    end if;
+
+    if not exists (
+        select 1 from public.resources r
+        where r.id = v_id
+          and (
+              (r.resource_type = 'article' and exists (select 1 from public.article_resources x where x.resource_id = v_id))
+              or (r.resource_type = 'video' and exists (select 1 from public.video_resources x where x.resource_id = v_id))
+              or (r.resource_type = 'audio' and exists (select 1 from public.audio_resources x where x.resource_id = v_id))
+              or (r.resource_type = 'pdf' and exists (select 1 from public.pdf_resources x where x.resource_id = v_id))
+              or (r.resource_type = 'hotline' and exists (select 1 from public.hotline_resources x where x.resource_id = v_id))
+          )
+    ) then
+        raise exception 'The resource subtype does not match resources.resource_type.';
+    end if;
+
+    return null;
+end;
+$function$;
+
+create constraint trigger trg_resource_subtype_guard
+after insert or update on public.resources
+deferrable initially deferred
+for each row execute function public.validate_resource_subtype();
+
+create constraint trigger trg_article_resource_subtype_guard
+after insert or update or delete on public.article_resources
+deferrable initially deferred
+for each row execute function public.validate_resource_subtype();
+
+create constraint trigger trg_video_resource_subtype_guard
+after insert or update or delete on public.video_resources
+deferrable initially deferred
+for each row execute function public.validate_resource_subtype();
+
+create constraint trigger trg_audio_resource_subtype_guard
+after insert or update or delete on public.audio_resources
+deferrable initially deferred
+for each row execute function public.validate_resource_subtype();
+
+create constraint trigger trg_pdf_resource_subtype_guard
+after insert or update or delete on public.pdf_resources
+deferrable initially deferred
+for each row execute function public.validate_resource_subtype();
+
+create constraint trigger trg_hotline_resource_subtype_guard
+after insert or update or delete on public.hotline_resources
+deferrable initially deferred
+for each row execute function public.validate_resource_subtype();
+
+-- OOP: Generalisation integrity - an Enquiry is either IdentifiedEnquiry or
+-- AnonymousEnquiry, never both and never neither.
+create or replace function public.validate_enquiry_subtype()
+returns trigger
+language plpgsql
+set search_path = public
+as $function$
+declare
+    v_id uuid;
+    v_type text;
+    v_count integer;
+begin
+    if tg_table_name = 'enquiries' then
+        v_id := new.id;
+    elsif tg_op = 'DELETE' then
+        v_id := old.enquiry_id;
+    else
+        v_id := new.enquiry_id;
+    end if;
+
+    select e.enquiry_type into v_type
+    from public.enquiries e
+    where e.id = v_id;
+
+    if not found then
+        return null;
+    end if;
+
+    select count(*) into v_count
+    from (
+        select 1 from public.identified_enquiries where enquiry_id = v_id
+        union all
+        select 1 from public.anonymous_enquiries where enquiry_id = v_id
+    ) subtypes;
+
+    if v_count <> 1 then
+        raise exception 'An enquiry must have exactly one matching subtype row.';
+    end if;
+
+    if not exists (
+        select 1 from public.enquiries e
+        where e.id = v_id
+          and (
+              (e.enquiry_type = 'identified' and exists (select 1 from public.identified_enquiries x where x.enquiry_id = v_id))
+              or (e.enquiry_type = 'anonymous' and exists (select 1 from public.anonymous_enquiries x where x.enquiry_id = v_id))
+          )
+    ) then
+        raise exception 'The enquiry subtype does not match enquiries.enquiry_type.';
+    end if;
+
+    return null;
+end;
+$function$;
+
+create constraint trigger trg_enquiry_subtype_guard
+after insert or update on public.enquiries
+deferrable initially deferred
+for each row execute function public.validate_enquiry_subtype();
+
+create constraint trigger trg_identified_enquiry_subtype_guard
+after insert or update or delete on public.identified_enquiries
+deferrable initially deferred
+for each row execute function public.validate_enquiry_subtype();
+
+create constraint trigger trg_anonymous_enquiry_subtype_guard
+after insert or update or delete on public.anonymous_enquiries
+deferrable initially deferred
+for each row execute function public.validate_enquiry_subtype();
+
+-- ============================================================================
+-- 9. NEW AUTH USER -> LINKED STAFF OR NEW STUDENT
+-- ============================================================================
+
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, auth
+as $function$
+declare
+    v_meta jsonb := coalesce(new.raw_user_meta_data, '{}'::jsonb);
+    v_existing public.users%rowtype;
+    v_email text := lower(btrim(coalesce(new.email, '')));
+    v_full_name text;
+    v_student_id text;
+    v_programme text;
+    v_phone text;
+    v_preferred_mode text;
+    v_user_id uuid;
+begin
+    if v_email = '' then
+        raise exception 'An email address is required for this app.';
+    end if;
+
+    select * into v_existing
+    from public.users u
+    where lower(u.email) = v_email
+    limit 1;
+
+    -- Pre-provisioned administrator/counsellor: link the Auth account to the
+    -- existing users row. The subtype row already exists.
+    if found then
+        if v_existing.auth_user_id is not null and v_existing.auth_user_id <> new.id then
+            raise exception 'This app profile is already linked to another account.';
+        end if;
+
+        update public.users
+        set auth_user_id = new.id,
+            updated_at = now()
+        where id = v_existing.id;
+
+        if v_existing.user_type = 'student' then
+            if not exists (select 1 from public.students s where s.user_id = v_existing.id) then
+                raise exception 'This student profile is incomplete.';
+            end if;
+        elsif v_existing.user_type = 'counsellor' then
+            if not exists (select 1 from public.counsellors c where c.user_id = v_existing.id) then
+                raise exception 'This counsellor profile is incomplete.';
+            end if;
+        elsif v_existing.user_type = 'administrator' then
+            if not exists (select 1 from public.administrators a where a.user_id = v_existing.id) then
+                raise exception 'This administrator profile is incomplete.';
+            end if;
+        end if;
+
+        return new;
+    end if;
+
+    -- Otherwise this is a new student registering through the app.
+    v_full_name := btrim(coalesce(v_meta ->> 'full_name', ''));
+    v_student_id := btrim(coalesce(v_meta ->> 'student_id', ''));
+    v_programme := btrim(coalesce(v_meta ->> 'programme', ''));
+    v_phone := btrim(coalesce(v_meta ->> 'phone', ''));
+    v_preferred_mode := btrim(coalesce(v_meta ->> 'preferred_session_mode', ''));
+
+    if char_length(v_full_name) < 2
+       or char_length(v_full_name) > 100
+       or char_length(v_student_id) < 3
+       or char_length(v_student_id) > 30
+       or char_length(v_programme) < 2
+       or char_length(v_programme) > 120
+       or v_phone = '' then
+        raise exception 'Please complete your full name, student ID, programme and phone number.';
+    end if;
+
+    if v_phone !~ '^(01[0-9]-[0-9]{7}|\+601[0-9][0-9]{7,8})$' then
+        raise exception 'Please enter a valid Malaysian phone number (e.g. 012-3456789 or +60123456789).';
+    end if;
+
+    if v_preferred_mode not in ('in_person', 'online') then
+        raise exception 'Please choose a preferred session mode.';
+    end if;
+
+    if exists (
+        select 1
+        from public.students s
+        where lower(s.student_id) = lower(v_student_id)
+    ) then
+        raise exception 'That student ID is already registered.';
+    end if;
+
+    insert into public.users (
+        auth_user_id, email, full_name, phone, is_active, user_type
+    )
+    values (
+        new.id, v_email, v_full_name, v_phone, true, 'student'
+    )
+    returning id into v_user_id;
+
+    insert into public.students (
+        user_id, student_id, programme, preferred_session_mode
+    )
+    values (
+        v_user_id, v_student_id, v_programme, v_preferred_mode
+    );
+
+    return new;
+end;
+$function$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+after insert on auth.users
+for each row execute function public.handle_new_user();
+
+-- ============================================================================
+-- 10. BUSINESS FUNCTIONS (database methods)
+-- ============================================================================
+
+-- Atomically books a session.
+create or replace function public.book_appointment(
+    p_slot_id uuid,
+    p_mode text,
+    p_concern_category text,
+    p_note text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, auth
+as $function$
+declare
+    v_student_id uuid := public.app_user_id();
+    v_user record;
+    v_slot record;
+    v_appointment_id uuid;
+    v_active_count integer;
+    v_mode_code text := public.resolve_session_mode(p_mode);
+    v_concern_code text := public.resolve_concern_category(p_concern_category);
+    v_note text := nullif(btrim(coalesce(p_note, '')), '');
+begin
+    if v_student_id is null then
+        raise exception 'Please sign in again.';
+    end if;
+
+    select u.id, u.user_type, u.is_active
+    into v_user
+    from public.users u
+    where u.id = v_student_id
+    for update;
+
+    if not found then
+        raise exception 'Only students can book counselling appointments.';
+    end if;
+
+    if v_user.user_type <> 'student' then
+        raise exception 'Only students can book counselling appointments.';
+    end if;
+
+    if not v_user.is_active then
+        raise exception 'This account is inactive. Please contact the counselling office.';
+    end if;
+
+    if v_mode_code is null then
+        raise exception 'Please choose in-person or online mode.';
+    end if;
+
+    if v_concern_code is null then
+        raise exception 'Please choose a valid concern category.';
+    end if;
+
+    if v_note is not null and char_length(v_note) > 1000 then
+        raise exception 'Your note must be 1,000 characters or fewer.';
+    end if;
+
+    select s.id, s.counsellor_id, s.start_at, s.end_at,
+           u.is_active as counsellor_active
+    into v_slot
+    from public.availability_slots s
+    join public.counsellors c on c.user_id = s.counsellor_id
+    join public.users u on u.id = c.user_id
+    where s.id = p_slot_id
+    for update of s;
+
+    if not found then
+        raise exception 'That time slot could not be found.';
+    end if;
+
+    if not v_slot.counsellor_active then
+        raise exception 'This counsellor is not accepting new appointments.';
+    end if;
+
+    if v_slot.start_at <= now() then
+        raise exception 'That time slot has already passed. Please choose another.';
+    end if;
+
+    if exists (
+        select 1
+        from public.appointments a
+        where a.slot_id = p_slot_id
+          and a.status_code in ('pending', 'confirmed')
+    ) then
+        raise exception 'That time slot was just booked. Please choose another slot.';
+    end if;
+
+    select count(*)
+    into v_active_count
+    from public.appointments a
+    join public.availability_slots s on s.id = a.slot_id
+    where a.student_id = v_student_id
+      and a.status_code in ('pending', 'confirmed')
+      and s.start_at > now();
+
+    if v_active_count >= 2 then
+        raise exception 'You can have at most 2 active upcoming appointments. Cancel one first.';
+    end if;
+
+    if exists (
+        select 1
+        from public.appointments a
+        join public.availability_slots s on s.id = a.slot_id
+        where a.student_id = v_student_id
+          and a.status_code in ('pending', 'confirmed')
+          and tstzrange(s.start_at, s.end_at, '[)')
+              && tstzrange(v_slot.start_at, v_slot.end_at, '[)')
+    ) then
+        raise exception 'You already have another appointment that overlaps this time.';
+    end if;
+
+    begin
+        insert into public.appointments (
+            student_id, counsellor_id, slot_id, mode_code, concern_code,
+            note, status_code
+        )
+        values (
+            v_student_id, v_slot.counsellor_id, p_slot_id, v_mode_code,
+            v_concern_code, v_note, 'pending'
+        )
+        returning id into v_appointment_id;
+    exception
+        when unique_violation then
+            raise exception 'That time slot was just booked. Please choose another slot.';
+    end;
+
+    return v_appointment_id;
+end;
+$function$;
+
+-- Student reschedule, still with the 12-hour notice rule.
+create or replace function public.reschedule_appointment(
+    p_appointment_id uuid,
+    p_new_slot_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $function$
+declare
+    v_student_id uuid := public.app_user_id();
+    v_user record;
+    v_appointment record;
+    v_new_slot record;
+begin
+    if v_student_id is null then
+        raise exception 'Please sign in again.';
+    end if;
+
+    select u.id, u.user_type, u.is_active
+    into v_user
+    from public.users u
+    where u.id = v_student_id
+    for update;
+
+    if not found or v_user.user_type <> 'student' then
+        raise exception 'Only students can reschedule appointments.';
+    end if;
+
+    if not v_user.is_active then
+        raise exception 'This account is inactive. Please contact the counselling office.';
+    end if;
+
+    select a.id, a.status_code, a.slot_id, a.counsellor_id,
+           s.start_at as old_start_at
+    into v_appointment
+    from public.appointments a
+    join public.availability_slots s on s.id = a.slot_id
+    where a.id = p_appointment_id
+      and a.student_id = v_student_id
+    for update of a;
+
+    if not found then
+        raise exception 'That appointment could not be found.';
+    end if;
+
+    if v_appointment.status_code not in ('pending', 'confirmed') then
+        raise exception 'Only pending or confirmed appointments can be rescheduled.';
+    end if;
+
+    if v_appointment.old_start_at < now() + interval '12 hours' then
+        raise exception 'Appointments can only be rescheduled at least 12 hours in advance.';
+    end if;
+
+    if p_new_slot_id = v_appointment.slot_id then
+        raise exception 'Please choose a different time slot.';
+    end if;
+
+    select s.id, s.counsellor_id, s.start_at, s.end_at,
+           u.is_active as counsellor_active
+    into v_new_slot
+    from public.availability_slots s
+    join public.counsellors c on c.user_id = s.counsellor_id
+    join public.users u on u.id = c.user_id
+    where s.id = p_new_slot_id
+    for update of s;
+
+    if not found then
+        raise exception 'That new time slot could not be found.';
+    end if;
+
+    if not v_new_slot.counsellor_active then
+        raise exception 'This counsellor is not accepting new appointments.';
+    end if;
+
+    if v_new_slot.start_at <= now() then
+        raise exception 'That new time slot has already passed.';
+    end if;
+
+    if v_new_slot.counsellor_id <> v_appointment.counsellor_id then
+        raise exception 'Please choose another slot with the same counsellor.';
+    end if;
+
+    if exists (
+        select 1
+        from public.appointments a
+        where a.slot_id = p_new_slot_id
+          and a.status_code in ('pending', 'confirmed')
+    ) then
+        raise exception 'That new time slot was just booked. Please choose another slot.';
+    end if;
+
+    if exists (
+        select 1
+        from public.appointments a
+        join public.availability_slots s on s.id = a.slot_id
+        where a.student_id = v_student_id
+          and a.id <> p_appointment_id
+          and a.status_code in ('pending', 'confirmed')
+          and tstzrange(s.start_at, s.end_at, '[)')
+              && tstzrange(v_new_slot.start_at, v_new_slot.end_at, '[)')
+    ) then
+        raise exception 'You already have another appointment that overlaps this time.';
+    end if;
+
+    begin
+        update public.appointments
+        set slot_id = p_new_slot_id
+        where id = p_appointment_id;
+    exception
+        when unique_violation then
+            raise exception 'That new time slot was just booked. Please choose another slot.';
+    end;
+end;
+$function$;
+
+-- Student cancellation.
+create or replace function public.cancel_appointment(
+    p_appointment_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $function$
+declare
+    v_student_id uuid := public.app_user_id();
+    v_user record;
+    v_appointment record;
+begin
+    if v_student_id is null then
+        raise exception 'Please sign in again.';
+    end if;
+
+    select u.id, u.user_type, u.is_active
+    into v_user
+    from public.users u
+    where u.id = v_student_id
+    for update;
+
+    if not found or v_user.user_type <> 'student' then
+        raise exception 'Only students can cancel their own appointments.';
+    end if;
+
+    if not v_user.is_active then
+        raise exception 'This account is inactive. Please contact the counselling office.';
+    end if;
+
+    select a.id, a.status_code, s.start_at
+    into v_appointment
+    from public.appointments a
+    join public.availability_slots s on s.id = a.slot_id
+    where a.id = p_appointment_id
+      and a.student_id = v_student_id
+    for update of a;
+
+    if not found then
+        raise exception 'That appointment could not be found.';
+    end if;
+
+    if v_appointment.status_code not in ('pending', 'confirmed') then
+        raise exception 'Only pending or confirmed appointments can be cancelled.';
+    end if;
+
+    if v_appointment.start_at <= now() then
+        raise exception 'This appointment has already started. Please contact the counselling office.';
+    end if;
+
+    update public.appointments
+    set status_code = 'cancelled'
+    where id = p_appointment_id;
+end;
+$function$;
+
+-- Counsellor confirm/decline/complete/no-show/cancel.
+create or replace function public.update_appointment_status(
+    p_appointment_id uuid,
+    p_new_status text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $function$
+declare
+    v_counsellor_id uuid := public.app_counsellor_id();
+    v_appointment record;
+    v_new_status text := lower(btrim(coalesce(p_new_status, '')));
+begin
+    if v_counsellor_id is null then
+        raise exception 'Only an active counsellor can update appointment status.';
+    end if;
+
+    select a.id, a.status_code, s.start_at
+    into v_appointment
+    from public.appointments a
+    join public.availability_slots s on s.id = a.slot_id
+    where a.id = p_appointment_id
+      and a.counsellor_id = v_counsellor_id
+    for update of a;
+
+    if not found then
+        raise exception 'That appointment could not be found in your schedule.';
+    end if;
+
+    if not (
+        (v_appointment.status_code = 'pending' and v_new_status in ('confirmed', 'cancelled'))
+        or (v_appointment.status_code = 'confirmed' and v_new_status in ('completed', 'no_show', 'cancelled'))
+    ) then
+        raise exception 'Counsellors can confirm or decline a pending booking, complete / mark no-show a confirmed booking, or cancel a confirmed session.';
+    end if;
+
+    if v_new_status = 'confirmed' and v_appointment.start_at <= now() then
+        raise exception 'That booking time has already passed and can no longer be confirmed.';
+    end if;
+
+    if v_new_status = 'cancelled' and v_appointment.start_at <= now() then
+        raise exception 'This session has already started and cannot be cancelled from the app.';
+    end if;
+
+    update public.appointments
+    set status_code = v_new_status
+    where id = p_appointment_id;
+end;
+$function$;
+
+-- Counsellor emergency reschedule of a confirmed session.
+create or replace function public.counsellor_reschedule_appointment(
+    p_appointment_id uuid,
+    p_new_slot_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $function$
+declare
+    v_counsellor_id uuid := public.app_counsellor_id();
+    v_appointment record;
+    v_new_slot record;
+begin
+    if v_counsellor_id is null then
+        raise exception 'Only an active counsellor can reschedule a session.';
+    end if;
+
+    select a.id, a.status_code, a.slot_id, a.student_id,
+           s.start_at as old_start_at
+    into v_appointment
+    from public.appointments a
+    join public.availability_slots s on s.id = a.slot_id
+    where a.id = p_appointment_id
+      and a.counsellor_id = v_counsellor_id
+    for update of a;
+
+    if not found then
+        raise exception 'That appointment could not be found in your schedule.';
+    end if;
+
+    if v_appointment.status_code <> 'confirmed' then
+        raise exception 'Only confirmed sessions can be rescheduled by the counsellor.';
+    end if;
+
+    if v_appointment.old_start_at <= now() then
+        raise exception 'This session has already started and cannot be rescheduled.';
+    end if;
+
+    if p_new_slot_id = v_appointment.slot_id then
+        raise exception 'Please choose a different time slot.';
+    end if;
+
+    select s.id, s.counsellor_id, s.start_at, s.end_at,
+           u.is_active as counsellor_active
+    into v_new_slot
+    from public.availability_slots s
+    join public.counsellors c on c.user_id = s.counsellor_id
+    join public.users u on u.id = c.user_id
+    where s.id = p_new_slot_id
+      and s.counsellor_id = v_counsellor_id
+    for update of s;
+
+    if not found then
+        raise exception 'Please choose one of your own free slots.';
+    end if;
+
+    if not v_new_slot.counsellor_active then
+        raise exception 'This counsellor is not accepting new appointments.';
+    end if;
+
+    if v_new_slot.start_at <= now() then
+        raise exception 'That new time slot has already passed.';
+    end if;
+
+    if exists (
+        select 1
+        from public.appointments a
+        where a.slot_id = p_new_slot_id
+          and a.status_code in ('pending', 'confirmed')
+    ) then
+        raise exception 'That new time slot was just booked. Please choose another slot.';
+    end if;
+
+    if exists (
+        select 1
+        from public.appointments a
+        join public.availability_slots s on s.id = a.slot_id
+        where a.student_id = v_appointment.student_id
+          and a.id <> p_appointment_id
+          and a.status_code in ('pending', 'confirmed')
+          and tstzrange(s.start_at, s.end_at, '[)')
+              && tstzrange(v_new_slot.start_at, v_new_slot.end_at, '[)')
+    ) then
+        raise exception 'This student already has an appointment that overlaps this time.';
+    end if;
+
+    begin
+        update public.appointments
+        set slot_id = p_new_slot_id
+        where id = p_appointment_id;
+    exception
+        when unique_violation then
+            raise exception 'That new time slot was just booked. Please choose another slot.';
+    end;
+end;
+$function$;
+
+-- Counsellor creates a follow-up appointment from a session record.
+create or replace function public.create_followup_appointment(
+    p_record_id uuid,
+    p_slot_id uuid
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, auth
+as $function$
+declare
+    v_counsellor_id uuid := public.app_counsellor_id();
+    v_record record;
+    v_slot record;
+    v_user record;
+    v_active_count integer;
+    v_appointment_id uuid;
+begin
+    if v_counsellor_id is null then
+        raise exception 'Only an active counsellor can schedule follow-ups.';
+    end if;
+
+    select r.id, r.appointment_id, r.student_id, r.is_archived,
+           a.mode_code, a.concern_code
+    into v_record
+    from public.session_records r
+    join public.appointments a on a.id = r.appointment_id
+    where r.id = p_record_id
+      and r.counsellor_id = v_counsellor_id;
+
+    if not found then
+        raise exception 'That session record could not be found.';
+    end if;
+
+    if v_record.is_archived then
+        raise exception 'Archived session records cannot be used to schedule follow-ups.';
+    end if;
+
+    select u.id, u.user_type, u.is_active
+    into v_user
+    from public.users u
+    where u.id = v_record.student_id
+    for update;
+
+    if not found or not v_user.is_active or v_user.user_type <> 'student' then
+        raise exception 'This student account is no longer active.';
+    end if;
+
+    select s.id, s.counsellor_id, s.start_at, s.end_at,
+           u.is_active as counsellor_active
+    into v_slot
+    from public.availability_slots s
+    join public.counsellors c on c.user_id = s.counsellor_id
+    join public.users u on u.id = c.user_id
+    where s.id = p_slot_id
+      and s.counsellor_id = v_counsellor_id
+    for update of s;
+
+    if not found then
+        raise exception 'Please choose one of your own free slots.';
+    end if;
+
+    if not v_slot.counsellor_active then
+        raise exception 'This counsellor is not accepting new appointments.';
+    end if;
+
+    if v_slot.start_at <= now() then
+        raise exception 'That time slot has already passed.';
+    end if;
+
+    if exists (
+        select 1
+        from public.appointments a
+        where a.slot_id = p_slot_id
+          and a.status_code in ('pending', 'confirmed')
+    ) then
+        raise exception 'That time slot is already booked.';
+    end if;
+
+    select count(*)
+    into v_active_count
+    from public.appointments a
+    join public.availability_slots s on s.id = a.slot_id
+    where a.student_id = v_record.student_id
+      and a.status_code in ('pending', 'confirmed')
+      and s.start_at > now();
+
+    if v_active_count >= 2 then
+        raise exception 'This student already has 2 active upcoming appointments.';
+    end if;
+
+    if exists (
+        select 1
+        from public.appointments a
+        join public.availability_slots s on s.id = a.slot_id
+        where a.student_id = v_record.student_id
+          and a.status_code in ('pending', 'confirmed')
+          and tstzrange(s.start_at, s.end_at, '[)')
+              && tstzrange(v_slot.start_at, v_slot.end_at, '[)')
+    ) then
+        raise exception 'This student already has an appointment that overlaps this time.';
+    end if;
+
+    begin
+        insert into public.appointments (
+            student_id, counsellor_id, slot_id, mode_code, concern_code,
+            note, status_code, follow_up_of
+        )
+        values (
+            v_record.student_id, v_counsellor_id, p_slot_id, v_record.mode_code,
+            v_record.concern_code, null, 'pending', v_record.appointment_id
+        )
+        returning id into v_appointment_id;
+    exception
+        when unique_violation then
+            raise exception 'That time slot was just booked. Please choose another slot.';
+    end;
+
+    return v_appointment_id;
+end;
+$function$;
+
+-- Student account deactivation.
+create or replace function public.deactivate_account()
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $function$
+declare
+    v_student_id uuid := public.app_user_id();
+    v_user record;
+    v_upcoming_count integer;
+begin
+    if v_student_id is null then
+        raise exception 'Please sign in again.';
+    end if;
+
+    select u.id, u.user_type, u.is_active
+    into v_user
+    from public.users u
+    where u.id = v_student_id
+    for update;
+
+    if not found or v_user.user_type <> 'student' then
+        raise exception 'Only student accounts can be deactivated from this screen.';
+    end if;
+
+    if not v_user.is_active then
+        raise exception 'This account is already inactive.';
+    end if;
+
+    select count(*)
+    into v_upcoming_count
+    from public.appointments a
+    join public.availability_slots s on s.id = a.slot_id
+    where a.student_id = v_student_id
+      and a.status_code in ('pending', 'confirmed')
+      and s.start_at > now();
+
+    if v_upcoming_count > 0 then
+        raise exception 'You still have upcoming appointments. Cancel them before deactivating your account.';
+    end if;
+
+    update public.users
+    set is_active = false
+    where id = v_student_id;
+end;
+$function$;
+
+-- Admin removes a counsellor. Upcoming sessions block removal; history means
+-- deactivate; no history means a hard delete of the class-table row.
+-- Module 1: atomic edit of the student's common user fields and student subtype.
+create or replace function public.update_student_profile(
+    p_full_name text,
+    p_programme text,
+    p_phone text,
+    p_preferred_session_mode text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $function$
+declare
+    v_user_id uuid := public.app_user_id();
+    v_mode text := public.resolve_session_mode(p_preferred_session_mode);
+    v_name text := btrim(coalesce(p_full_name, ''));
+    v_programme text := btrim(coalesce(p_programme, ''));
+    v_phone text := nullif(btrim(coalesce(p_phone, '')), '');
+begin
+    if v_user_id is null or public.app_role() <> 'student' then
+        raise exception 'Only an active student can edit this profile.';
+    end if;
+
+    if char_length(v_name) < 2 or char_length(v_name) > 100 then
+        raise exception 'Full name must be between 2 and 100 characters.';
+    end if;
+
+    if char_length(v_programme) < 2 or char_length(v_programme) > 120 then
+        raise exception 'Programme must be between 2 and 120 characters.';
+    end if;
+
+    if v_mode is null then
+        raise exception 'Please choose a preferred session mode.';
+    end if;
+
+    update public.users
+    set full_name = v_name,
+        phone = v_phone
+    where id = v_user_id;
+
+    update public.students
+    set programme = v_programme,
+        preferred_session_mode = v_mode
+    where user_id = v_user_id;
+end;
+$function$;
+
+create or replace function public.delete_counsellor(
+    p_counsellor_id uuid
+)
+returns text
+language plpgsql
+security definer
+set search_path = public, auth
+as $function$
+declare
+    v_user record;
+    v_upcoming_count integer;
+    v_has_history boolean;
+begin
+    if public.app_role() <> 'administrator' then
+        raise exception 'Only administrators can remove counsellors.';
+    end if;
+
+    select u.id, u.full_name, u.auth_user_id, u.user_type, u.is_active
+    into v_user
+    from public.users u
+    join public.counsellors c on c.user_id = u.id
+    where u.id = p_counsellor_id
+    for update of u;
+
+    if not found then
+        raise exception 'That counsellor could not be found.';
+    end if;
+
+    select count(*)
+    into v_upcoming_count
+    from public.appointments a
+    join public.availability_slots s on s.id = a.slot_id
+    where a.counsellor_id = p_counsellor_id
+      and a.status_code in ('pending', 'confirmed')
+      and s.start_at > now();
+
+    if v_upcoming_count > 0 then
+        raise exception 'This counsellor has upcoming appointments. Resolve them before removing the counsellor.';
+    end if;
+
+    select exists (
+        select 1 from public.appointments a where a.counsellor_id = p_counsellor_id
+    )
+    into v_has_history;
+
+    if v_has_history then
+        update public.users
+        set is_active = false
+        where id = p_counsellor_id;
+        return 'deactivated';
+    end if;
+
+    delete from public.users where id = p_counsellor_id;
+    return 'deleted';
+end;
+$function$;
+
+-- Admin creates a counsellor as one aggregate: users + subtype + associations.
+create or replace function public.create_counsellor(
+    p_full_name text,
+    p_email text,
+    p_specialisations text[],
+    p_languages text[],
+    p_bio text default ''
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, auth
+as $function$
+declare
+    v_name text := btrim(coalesce(p_full_name, ''));
+    v_email text := lower(btrim(coalesce(p_email, '')));
+    v_bio text := btrim(coalesce(p_bio, ''));
+    v_user_id uuid;
+    v_category_code text;
+    v_language text;
+    v_language_id smallint;
+    v_specialisation text;
+begin
+    if public.app_role() <> 'administrator' then
+        raise exception 'Only administrators can add counsellors.';
+    end if;
+
+    if char_length(v_name) < 2 or char_length(v_name) > 100 then
+        raise exception 'Please enter a valid counsellor name.';
+    end if;
+
+    if v_email !~* '^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$' then
+        raise exception 'Please enter a valid email address.';
+    end if;
+
+    if exists (select 1 from public.users u where lower(u.email) = v_email) then
+        raise exception 'A user with that email already exists.';
+    end if;
+
+    if p_specialisations is null or array_length(p_specialisations, 1) is null then
+        raise exception 'Please add at least one specialisation.';
+    end if;
+
+    if p_languages is null or array_length(p_languages, 1) is null then
+        raise exception 'Please add at least one language.';
+    end if;
+
+    insert into public.users (email, full_name, phone, is_active, user_type)
+    values (v_email, v_name, null, true, 'counsellor')
+    returning id into v_user_id;
+
+    insert into public.counsellors (user_id, bio)
+    values (v_user_id, v_bio);
+
+    for v_specialisation in
+        select distinct btrim(x)
+        from unnest(p_specialisations) as x
+        where btrim(x) <> ''
+    loop
+        v_category_code := public.resolve_concern_category(v_specialisation);
+        if v_category_code is null then
+            raise exception 'Unknown specialisation: %', v_specialisation;
+        end if;
+        insert into public.counsellor_specialisations (counsellor_id, category_code)
+        values (v_user_id, v_category_code)
+        on conflict do nothing;
+    end loop;
+
+    for v_language in
+        select distinct btrim(x)
+        from unnest(p_languages) as x
+        where btrim(x) <> ''
+    loop
+        insert into public.languages (name)
+        values (v_language)
+        on conflict do nothing;
+
+        select l.language_id into v_language_id
+        from public.languages l
+        where lower(l.name) = lower(v_language)
+        limit 1;
+
+        if v_language_id is null then
+            raise exception 'That language could not be saved.';
+        end if;
+
+        insert into public.counsellor_languages (counsellor_id, language_id)
+        values (v_user_id, v_language_id)
+        on conflict do nothing;
+    end loop;
+
+    return v_user_id;
+end;
+$function$;
+
+-- Admin edits a counsellor aggregate.
+create or replace function public.update_counsellor(
+    p_counsellor_id uuid,
+    p_full_name text,
+    p_email text,
+    p_specialisations text[],
+    p_languages text[],
+    p_bio text default '',
+    p_is_active boolean default true
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $function$
+declare
+    v_name text := btrim(coalesce(p_full_name, ''));
+    v_email text := lower(btrim(coalesce(p_email, '')));
+    v_category_code text;
+    v_language text;
+    v_language_id smallint;
+    v_specialisation text;
+begin
+    if public.app_role() <> 'administrator' then
+        raise exception 'Only administrators can edit counsellors.';
+    end if;
+
+    if not exists (
+        select 1 from public.counsellors c where c.user_id = p_counsellor_id
+    ) then
+        raise exception 'That counsellor could not be found.';
+    end if;
+
+    if char_length(v_name) < 2 or char_length(v_name) > 100 then
+        raise exception 'Please enter a valid counsellor name.';
+    end if;
+
+    if v_email !~* '^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$' then
+        raise exception 'Please enter a valid email address.';
+    end if;
+
+    if exists (
+        select 1 from public.users u
+        where lower(u.email) = v_email and u.id <> p_counsellor_id
+    ) then
+        raise exception 'A user with that email already exists.';
+    end if;
+
+    if p_specialisations is null or array_length(p_specialisations, 1) is null then
+        raise exception 'Please add at least one specialisation.';
+    end if;
+
+    if p_languages is null or array_length(p_languages, 1) is null then
+        raise exception 'Please add at least one language.';
+    end if;
+
+    update public.users
+    set full_name = v_name,
+        email = v_email,
+        is_active = p_is_active
+    where id = p_counsellor_id;
+
+    update public.counsellors
+    set bio = btrim(coalesce(p_bio, ''))
+    where user_id = p_counsellor_id;
+
+    delete from public.counsellor_specialisations where counsellor_id = p_counsellor_id;
+    delete from public.counsellor_languages where counsellor_id = p_counsellor_id;
+
+    for v_specialisation in
+        select distinct btrim(x)
+        from unnest(p_specialisations) as x
+        where btrim(x) <> ''
+    loop
+        v_category_code := public.resolve_concern_category(v_specialisation);
+        if v_category_code is null then
+            raise exception 'Unknown specialisation: %', v_specialisation;
+        end if;
+        insert into public.counsellor_specialisations (counsellor_id, category_code)
+        values (p_counsellor_id, v_category_code)
+        on conflict do nothing;
+    end loop;
+
+    for v_language in
+        select distinct btrim(x)
+        from unnest(p_languages) as x
+        where btrim(x) <> ''
+    loop
+        insert into public.languages (name)
+        values (v_language)
+        on conflict do nothing;
+
+        select l.language_id into v_language_id
+        from public.languages l
+        where lower(l.name) = lower(v_language)
+        limit 1;
+
+        insert into public.counsellor_languages (counsellor_id, language_id)
+        values (p_counsellor_id, v_language_id)
+        on conflict do nothing;
+    end loop;
+end;
+$function$;
+
+-- ============================================================================
+-- 11. RESOURCE AGGREGATE FUNCTIONS
+-- ============================================================================
+-- OOP: These functions are the database methods that keep a Resource and its
+-- subtype row consistent; the app never inserts half an object.
+
+create or replace function public.create_resource(
+    p_title text,
+    p_description text,
+    p_category text,
+    p_media_type text,
+    p_content_url text,
+    p_target_stress_brackets text[],
+    p_is_published boolean default false,
+    p_phone_number text default null,
+    p_operating_hours text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, auth
+as $function$
+declare
+    v_type text := public.resolve_resource_type(p_media_type);
+    v_category_code text := public.resolve_concern_category(p_category);
+    v_content_url text := nullif(btrim(coalesce(p_content_url, '')), '');
+    v_phone text := nullif(btrim(coalesce(p_phone_number, '')), '');
+    v_hours text := nullif(btrim(coalesce(p_operating_hours, '')), '');
+    v_resource_id uuid;
+    v_bracket text;
+    v_bracket_code text;
+begin
+    if public.app_role() not in ('counsellor', 'administrator') then
+        raise exception 'Only counsellors and administrators can manage resources.';
+    end if;
+
+    if v_type is null then
+        raise exception 'Please choose a valid resource type.';
+    end if;
+
+    if v_category_code is null then
+        raise exception 'Please choose a valid category.';
+    end if;
+
+    if v_type <> 'hotline' and v_content_url is null then
+        raise exception 'A resource link is required.';
+    end if;
+
+    if v_type = 'hotline' and v_content_url is null and v_phone is null then
+        raise exception 'A hotline needs a phone number or a website.';
+    end if;
+
+    if p_target_stress_brackets is null
+       or array_length(p_target_stress_brackets, 1) is null then
+        raise exception 'Please choose at least one target stress bracket.';
+    end if;
+
+    insert into public.resources (
+        title, description, category_code, resource_type, is_published
+    )
+    values (
+        btrim(coalesce(p_title, '')),
+        btrim(coalesce(p_description, '')),
+        v_category_code,
+        v_type,
+        coalesce(p_is_published, false)
+    )
+    returning id into v_resource_id;
+
+    if v_type = 'article' then
+        insert into public.article_resources (resource_id, content_url)
+        values (v_resource_id, v_content_url);
+    elsif v_type = 'video' then
+        insert into public.video_resources (resource_id, content_url)
+        values (v_resource_id, v_content_url);
+    elsif v_type = 'audio' then
+        insert into public.audio_resources (resource_id, content_url)
+        values (v_resource_id, v_content_url);
+    elsif v_type = 'pdf' then
+        insert into public.pdf_resources (resource_id, content_url)
+        values (v_resource_id, v_content_url);
+    else
+        insert into public.hotline_resources (
+            resource_id, phone_number, operating_hours, website_url
+        )
+        values (v_resource_id, v_phone, v_hours, v_content_url);
+    end if;
+
+    for v_bracket in
+        select distinct btrim(x)
+        from unnest(p_target_stress_brackets) as x
+        where btrim(x) <> ''
+    loop
+        v_bracket_code := public.resolve_stress_bracket(v_bracket);
+        if v_bracket_code is null then
+            raise exception 'Unknown stress bracket: %', v_bracket;
+        end if;
+        insert into public.resource_target_brackets (resource_id, bracket_code)
+        values (v_resource_id, v_bracket_code)
+        on conflict do nothing;
+    end loop;
+
+    return v_resource_id;
+end;
+$function$;
+
+create or replace function public.update_resource(
+    p_resource_id uuid,
+    p_title text,
+    p_description text,
+    p_category text,
+    p_media_type text,
+    p_content_url text,
+    p_target_stress_brackets text[],
+    p_is_published boolean default false,
+    p_phone_number text default null,
+    p_operating_hours text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $function$
+declare
+    v_type text := public.resolve_resource_type(p_media_type);
+    v_category_code text := public.resolve_concern_category(p_category);
+    v_content_url text := nullif(btrim(coalesce(p_content_url, '')), '');
+    v_phone text := nullif(btrim(coalesce(p_phone_number, '')), '');
+    v_hours text := nullif(btrim(coalesce(p_operating_hours, '')), '');
+    v_bracket text;
+    v_bracket_code text;
+begin
+    if public.app_role() not in ('counsellor', 'administrator') then
+        raise exception 'Only counsellors and administrators can manage resources.';
+    end if;
+
+    if not exists (select 1 from public.resources r where r.id = p_resource_id) then
+        raise exception 'That resource could not be found.';
+    end if;
+
+    if v_type is null then
+        raise exception 'Please choose a valid resource type.';
+    end if;
+
+    if v_category_code is null then
+        raise exception 'Please choose a valid category.';
+    end if;
+
+    if v_type <> 'hotline' and v_content_url is null then
+        raise exception 'A resource link is required.';
+    end if;
+
+    if v_type = 'hotline' and v_content_url is null and v_phone is null then
+        raise exception 'A hotline needs a phone number or a website.';
+    end if;
+
+    if p_target_stress_brackets is null
+       or array_length(p_target_stress_brackets, 1) is null then
+        raise exception 'Please choose at least one target stress bracket.';
+    end if;
+
+    -- Remove the old subtype before changing the supertype discriminator: the
+    -- composite FK from each subtype includes resource_type.
+    delete from public.article_resources where resource_id = p_resource_id;
+    delete from public.video_resources where resource_id = p_resource_id;
+    delete from public.audio_resources where resource_id = p_resource_id;
+    delete from public.pdf_resources where resource_id = p_resource_id;
+    delete from public.hotline_resources where resource_id = p_resource_id;
+
+    update public.resources
+    set title = btrim(coalesce(p_title, '')),
+        description = btrim(coalesce(p_description, '')),
+        category_code = v_category_code,
+        resource_type = v_type,
+        is_published = coalesce(p_is_published, false)
+    where id = p_resource_id;
+
+    if v_type = 'article' then
+        insert into public.article_resources (resource_id, content_url)
+        values (p_resource_id, v_content_url);
+    elsif v_type = 'video' then
+        insert into public.video_resources (resource_id, content_url)
+        values (p_resource_id, v_content_url);
+    elsif v_type = 'audio' then
+        insert into public.audio_resources (resource_id, content_url)
+        values (p_resource_id, v_content_url);
+    elsif v_type = 'pdf' then
+        insert into public.pdf_resources (resource_id, content_url)
+        values (p_resource_id, v_content_url);
+    else
+        insert into public.hotline_resources (
+            resource_id, phone_number, operating_hours, website_url
+        )
+        values (p_resource_id, v_phone, v_hours, v_content_url);
+    end if;
+
+    delete from public.resource_target_brackets where resource_id = p_resource_id;
+
+    for v_bracket in
+        select distinct btrim(x)
+        from unnest(p_target_stress_brackets) as x
+        where btrim(x) <> ''
+    loop
+        v_bracket_code := public.resolve_stress_bracket(v_bracket);
+        if v_bracket_code is null then
+            raise exception 'Unknown stress bracket: %', v_bracket;
+        end if;
+        insert into public.resource_target_brackets (resource_id, bracket_code)
+        values (p_resource_id, v_bracket_code)
+        on conflict do nothing;
+    end loop;
+end;
+$function$;
+
+create or replace function public.delete_resource(
+    p_resource_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $function$
+begin
+    if public.app_role() not in ('counsellor', 'administrator') then
+        raise exception 'Only counsellors and administrators can delete resources.';
+    end if;
+
+    delete from public.resources where id = p_resource_id;
+
+    if not found then
+        raise exception 'That resource could not be found.';
+    end if;
+end;
+$function$;
+
+-- ============================================================================
+-- 12. ENQUIRY FUNCTIONS
+-- ============================================================================
+
+create or replace function public.submit_enquiry(
+    p_category text,
+    p_message text,
+    p_is_anonymous boolean default false
+)
+returns text
+language plpgsql
+security definer
+set search_path = public, auth
+as $function$
+declare
+    v_student_id uuid := public.app_user_id();
+    v_user record;
+    v_category_code text := public.resolve_concern_category(p_category);
+    v_message text := btrim(coalesce(p_message, ''));
+    v_is_anonymous boolean := coalesce(p_is_anonymous, false);
+    v_reference_code text;
+    v_enquiry_id uuid;
+    v_enquiry_type text;
+begin
+    if v_student_id is null then
+        raise exception 'Please sign in again.';
+    end if;
+
+    select u.id, u.user_type, u.is_active
+    into v_user
+    from public.users u
+    where u.id = v_student_id;
+
+    if not found or v_user.user_type <> 'student' or not v_user.is_active then
+        raise exception 'Only active students can submit enquiries.';
+    end if;
+
+    if v_category_code is null then
+        raise exception 'Please choose a concern category.';
+    end if;
+
+    if char_length(v_message) < 10 or char_length(v_message) > 1000 then
+        raise exception 'Your message must be between 10 and 1,000 characters.';
+    end if;
+
+    v_enquiry_type := case when v_is_anonymous then 'anonymous' else 'identified' end;
+
+    loop
+        v_reference_code := 'ENQ-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6));
+        exit when not exists (
+            select 1 from public.enquiries e where e.reference_code = v_reference_code
+        );
+    end loop;
+
+    insert into public.enquiries (
+        reference_code, category_code, message, status, enquiry_type
+    )
+    values (
+        v_reference_code, v_category_code, v_message, 'open', v_enquiry_type
+    )
+    returning id into v_enquiry_id;
+
+    if v_is_anonymous then
+        insert into public.anonymous_enquiries (enquiry_id)
+        values (v_enquiry_id);
+    else
+        insert into public.identified_enquiries (enquiry_id, student_id)
+        values (v_enquiry_id, v_student_id);
+    end if;
+
+    return v_reference_code;
+end;
+$function$;
+
+create or replace function public.get_enquiry_by_code(
+    p_code text
+)
+returns table (
+    reference_code text,
+    category text,
+    message text,
+    reply text,
+    status text,
+    recommended_resource_id uuid,
+    recommended_resource_title text,
+    created_at timestamptz,
+    replied_at timestamptz
+)
+language plpgsql
+stable
+security definer
+set search_path = public, auth
+as $function$
+declare
+    v_code text := upper(btrim(coalesce(p_code, '')));
+begin
+    if public.app_role() is null then
+        raise exception 'Your account is not active. Please sign in again.';
+    end if;
+
+    if v_code !~ '^ENQ-[A-Z0-9]{6}$' then
+        raise exception 'Please enter a valid reference code (for example ENQ-7K3P9Q).';
+    end if;
+
+    return query
+    select e.reference_code,
+           cc.label,
+           e.message,
+           e.reply,
+           e.status,
+           e.recommended_resource_id,
+           r.title,
+           e.created_at,
+           e.replied_at
+    from public.enquiries e
+    join public.concern_categories cc on cc.code = e.category_code
+    left join public.resources r
+      on r.id = e.recommended_resource_id
+     and r.is_published = true
+    where e.reference_code = v_code;
+end;
+$function$;
+
+create or replace function public.withdraw_enquiry_by_code(
+    p_code text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $function$
+declare
+    v_code text := upper(btrim(coalesce(p_code, '')));
+    v_deleted integer;
+begin
+    if public.app_role() is null then
+        raise exception 'Your account is not active. Please sign in again.';
+    end if;
+
+    if v_code !~ '^ENQ-[A-Z0-9]{6}$' then
+        raise exception 'Please enter a valid reference code (for example ENQ-7K3P9Q).';
+    end if;
+
+    delete from public.enquiries
+    where reference_code = v_code
+      and status = 'open';
+
+    get diagnostics v_deleted = row_count;
+
+    if v_deleted = 0 then
+        raise exception 'No open enquiry was found for that reference code.';
+    end if;
+end;
+$function$;
+
+create or replace function public.admin_dashboard_stats()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public, auth
+as $function$
+begin
+    if public.app_role() <> 'administrator' then
+        raise exception 'Only administrators can view dashboard statistics.';
+    end if;
+
+    return jsonb_build_object(
+        'total_students', (
+            select count(*) from public.students
+        ),
+        'active_students', (
+            select count(*)
+            from public.students s
+            join public.users u on u.id = s.user_id
+            where u.is_active
+        ),
+        'total_counsellors', (
+            select count(*) from public.counsellors
+        ),
+        'active_counsellors', (
+            select count(*)
+            from public.counsellors c
+            join public.users u on u.id = c.user_id
+            where u.is_active
+        ),
+        'total_appointments', (
+            select count(*) from public.appointments
+        ),
+        'upcoming_appointments', (
+            select count(*)
+            from public.appointments a
+            join public.availability_slots s on s.id = a.slot_id
+            where a.status_code in ('pending', 'confirmed')
+              and s.start_at > now()
+        ),
+        'completed_appointments', (
+            select count(*) from public.appointments where status_code = 'completed'
+        ),
+        'session_records', (
+            select count(*) from public.session_records where not is_archived
+        ),
+        'total_resources', (
+            select count(*) from public.resources
+        ),
+        'published_resources', (
+            select count(*) from public.resources where is_published
+        ),
+        'feedback_count', (
+            select count(*) from public.feedback
+        ),
+        'average_rating', (
+            select coalesce(round(avg(f.rating)::numeric, 2), 0)
+            from public.feedback f
+        )
+    );
+end;
+$function$;
+
+-- ============================================================================
+-- 13. READ VIEWS (one read model per class)
+-- ============================================================================
+-- OOP: These views are the database projection of each class/subclass for the
+-- Kotlin factories. They expose read models, never replace the base entities.
+-- These are owner-rights views, like the previous safe views. Each view applies
+-- the caller's authorization predicate explicitly. They expose read models for
+-- the Kotlin factories and never bypass the privacy rules.
+
+create or replace view public.v_students as
+select
+    u.id,
+    u.auth_user_id,
+    u.email,
+    u.full_name,
+    u.phone,
+    u.is_active,
+    u.user_type,
+    s.student_id,
+    s.programme,
+    s.preferred_session_mode,
+    sm.label as preferred_session_mode_label,
+    u.created_at,
+    u.updated_at
+from public.users u
+join public.students s on s.user_id = u.id
+join public.session_modes sm on sm.code = s.preferred_session_mode
+where public.app_role() in ('counsellor', 'administrator')
+   or u.auth_user_id = auth.uid();
+
+create or replace view public.v_counsellors as
+select
+    u.id,
+    u.auth_user_id,
+    u.email,
+    u.full_name,
+    u.phone,
+    u.is_active,
+    u.user_type,
+    c.bio,
+    coalesce((
+        select array_agg(cc.label order by cc.sort_order)
+        from public.counsellor_specialisations cs
+        join public.concern_categories cc on cc.code = cs.category_code
+        where cs.counsellor_id = u.id
+    ), '{}'::text[]) as specialisations,
+    coalesce((
+        select array_agg(l.name order by l.name)
+        from public.counsellor_languages cl
+        join public.languages l on l.language_id = cl.language_id
+        where cl.counsellor_id = u.id
+    ), '{}'::text[]) as languages,
+    u.created_at,
+    u.updated_at
+from public.users u
+join public.counsellors c on c.user_id = u.id
+where public.app_role() is not null
+   or u.auth_user_id = auth.uid();
+
+create or replace view public.v_administrators as
+select
+    u.id,
+    u.auth_user_id,
+    u.email,
+    u.full_name,
+    u.phone,
+    u.is_active,
+    u.user_type,
+    u.created_at,
+    u.updated_at
+from public.users u
+join public.administrators a on a.user_id = u.id
+where public.app_role() = 'administrator'
+   or u.auth_user_id = auth.uid();
+
+-- Booking catalogue: active counsellors, future, free slots only.
+create or replace view public.v_availability_slots as
+select
+    s.id as slot_id,
+    s.counsellor_id,
+    u.full_name as counsellor_name,
+    coalesce((
+        select array_agg(cc.label order by cc.sort_order)
+        from public.counsellor_specialisations cs
+        join public.concern_categories cc on cc.code = cs.category_code
+        where cs.counsellor_id = s.counsellor_id
+    ), '{}'::text[]) as specialisations,
+    coalesce((
+        select array_agg(l.name order by l.name)
+        from public.counsellor_languages cl
+        join public.languages l on l.language_id = cl.language_id
+        where cl.counsellor_id = s.counsellor_id
+    ), '{}'::text[]) as languages,
+    c.bio,
+    s.start_at,
+    s.end_at
+from public.availability_slots s
+join public.counsellors c on c.user_id = s.counsellor_id
+join public.users u on u.id = c.user_id
+where u.is_active = true
+  and s.start_at > now()
+  and public.app_role() is not null
+  and not exists (
+      select 1
+      from public.appointments a
+      where a.slot_id = s.id
+        and a.status_code in ('pending', 'confirmed')
+  );
+
+create or replace view public.v_appointments as
+select
+    a.id,
+    a.student_id,
+    su.full_name as student_name,
+    su.email as student_email,
+    su.phone as student_phone,
+    su.is_active as student_is_active,
+    st.student_id as student_code,
+    st.programme as student_programme,
+    st.preferred_session_mode as student_preferred_mode,
+    a.counsellor_id,
+    cu.full_name as counsellor_name,
+    cu.email as counsellor_email,
+    cu.phone as counsellor_phone,
+    cu.is_active as counsellor_is_active,
+    c.bio as counsellor_bio,
+    coalesce((
+        select array_agg(ccs.label order by ccs.sort_order)
+        from public.counsellor_specialisations cs
+        join public.concern_categories ccs on ccs.code = cs.category_code
+        where cs.counsellor_id = c.user_id
+    ), '{}'::text[]) as counsellor_specialisations,
+    coalesce((
+        select array_agg(l.name order by l.name)
+        from public.counsellor_languages cl
+        join public.languages l on l.language_id = cl.language_id
+        where cl.counsellor_id = c.user_id
+    ), '{}'::text[]) as counsellor_languages,
+    a.slot_id,
+    s.start_at,
+    s.end_at,
+    a.mode_code,
+    sm.label as mode_label,
+    a.concern_code,
+    cc.label as concern_category,
+    a.note,
+    a.status_code,
+    ast.label as status_label,
+    ast.is_terminal,
+    a.follow_up_of,
+    a.created_at,
+    a.updated_at
+from public.appointments a
+join public.students st on st.user_id = a.student_id
+join public.users su on su.id = st.user_id
+join public.counsellors c on c.user_id = a.counsellor_id
+join public.users cu on cu.id = c.user_id
+join public.availability_slots s on s.id = a.slot_id
+join public.session_modes sm on sm.code = a.mode_code
+join public.concern_categories cc on cc.code = a.concern_code
+join public.appointment_statuses ast on ast.code = a.status_code
+where (public.app_role() = 'student' and a.student_id = public.app_user_id())
+   or (public.app_role() = 'counsellor' and a.counsellor_id = public.app_counsellor_id())
+   or public.app_role() = 'administrator';
+
+create or replace view public.v_session_records as
+select
+    r.id,
+    r.appointment_id,
+    r.counsellor_id,
+    cu.full_name as counsellor_name,
+    r.student_id,
+    su.full_name as student_name,
+    a.slot_id,
+    s.start_at as session_start,
+    cc.label as concern_category,
+    r.private_notes,
+    r.public_summary,
+    r.risk_code,
+    rl.label as risk_level,
+    r.follow_up_needed,
+    r.follow_up_due,
+    r.is_archived,
+    r.created_at,
+    r.updated_at
+from public.session_records r
+join public.appointments a on a.id = r.appointment_id
+join public.availability_slots s on s.id = a.slot_id
+join public.concern_categories cc on cc.code = a.concern_code
+join public.risk_levels rl on rl.code = r.risk_code
+join public.users cu on cu.id = r.counsellor_id
+join public.users su on su.id = r.student_id
+where r.counsellor_id = public.app_counsellor_id();
+
+create or replace view public.v_feedback as
+select
+    f.id,
+    f.appointment_id,
+    f.student_id,
+    su.full_name as student_name,
+    f.counsellor_id,
+    cu.full_name as counsellor_name,
+    f.rating,
+    f.comment,
+    f.created_at,
+    s.start_at as session_start,
+    cc.label as concern_category
+from public.feedback f
+join public.appointments a on a.id = f.appointment_id
+join public.availability_slots s on s.id = a.slot_id
+join public.concern_categories cc on cc.code = a.concern_code
+join public.users su on su.id = f.student_id
+join public.users cu on cu.id = f.counsellor_id
+where (public.app_role() = 'student' and f.student_id = public.app_user_id())
+   or (public.app_role() = 'counsellor' and f.counsellor_id = public.app_counsellor_id());
+
+create or replace view public.v_resources as
+select
+    r.id,
+    r.title,
+    r.description,
+    r.category_code,
+    cc.label as category,
+    r.resource_type,
+    case r.resource_type
+        when 'article' then 'Article'
+        when 'video' then 'Video'
+        when 'audio' then 'Audio'
+        when 'pdf' then 'PDF'
+        when 'hotline' then 'Hotline'
+    end as media_type,
+    coalesce(
+        ar.content_url,
+        vr.content_url,
+        au.content_url,
+        pr.content_url,
+        hr.website_url
+    ) as content_url,
+    hr.phone_number,
+    hr.operating_hours,
+    hr.website_url,
+    coalesce((
+        select array_agg(b.code order by b.sort_order)
+        from public.resource_target_brackets rb
+        join public.stress_brackets b on b.code = rb.bracket_code
+        where rb.resource_id = r.id
+    ), '{}'::text[]) as target_stress_brackets,
+    r.is_published,
+    r.created_at,
+    r.updated_at
+from public.resources r
+join public.concern_categories cc on cc.code = r.category_code
+left join public.article_resources ar on ar.resource_id = r.id
+left join public.video_resources vr on vr.resource_id = r.id
+left join public.audio_resources au on au.resource_id = r.id
+left join public.pdf_resources pr on pr.resource_id = r.id
+left join public.hotline_resources hr on hr.resource_id = r.id
+where (public.app_role() = 'student' and r.is_published = true)
+   or public.app_role() in ('counsellor', 'administrator');
+
+create or replace view public.v_enquiries as
+select
+    e.id,
+    e.reference_code,
+    e.category_code,
+    cc.label as category,
+    e.message,
+    e.status,
+    e.reply,
+    e.recommended_resource_id,
+    rr.title as recommended_resource_title,
+    e.replied_at,
+    e.enquiry_type,
+    (e.enquiry_type = 'anonymous') as is_anonymous,
+    ie.student_id,
+    su.full_name as student_name,
+    e.created_at,
+    e.updated_at
+from public.enquiries e
+join public.concern_categories cc on cc.code = e.category_code
+left join public.identified_enquiries ie on ie.enquiry_id = e.id
+left join public.users su on su.id = ie.student_id
+left join public.resources rr on rr.id = e.recommended_resource_id
+where (public.app_role() = 'student' and ie.student_id = public.app_user_id())
+   or public.app_role() = 'counsellor';
+
+-- Student-safe session summaries. No private notes or risk level.
+create or replace view public.student_session_summaries as
+select
+    r.id as record_id,
+    r.appointment_id,
+    s.start_at as session_start,
+    cc.label as concern_category,
+    cu.full_name as counsellor_name,
+    r.public_summary,
+    r.created_at as summary_created_at
+from public.session_records r
+join public.appointments a on a.id = r.appointment_id
+join public.availability_slots s on s.id = a.slot_id
+join public.concern_categories cc on cc.code = a.concern_code
+join public.users cu on cu.id = r.counsellor_id
+where r.student_id = public.app_identity_id()
+  and r.is_archived = false
+  and a.status_code = 'completed';
+
+-- ============================================================================
+-- 14. ROW-LEVEL SECURITY
+-- ============================================================================
+
+alter table public.concern_categories enable row level security;
+alter table public.session_modes enable row level security;
+alter table public.risk_levels enable row level security;
+alter table public.stress_brackets enable row level security;
+alter table public.appointment_statuses enable row level security;
+alter table public.appointment_status_transitions enable row level security;
+alter table public.languages enable row level security;
+alter table public.users enable row level security;
+alter table public.students enable row level security;
+alter table public.counsellors enable row level security;
+alter table public.administrators enable row level security;
+alter table public.counsellor_specialisations enable row level security;
+alter table public.counsellor_languages enable row level security;
+alter table public.availability_slots enable row level security;
+alter table public.appointments enable row level security;
+alter table public.session_records enable row level security;
+alter table public.feedback enable row level security;
+alter table public.resources enable row level security;
+alter table public.article_resources enable row level security;
+alter table public.video_resources enable row level security;
+alter table public.audio_resources enable row level security;
+alter table public.pdf_resources enable row level security;
+alter table public.hotline_resources enable row level security;
+alter table public.resource_target_brackets enable row level security;
+alter table public.enquiries enable row level security;
+alter table public.identified_enquiries enable row level security;
+alter table public.anonymous_enquiries enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Reference vocabularies: readable by any signed-in user, never writable
+-- through the API.
+-- ---------------------------------------------------------------------------
+
+create policy concern_categories_select_authenticated
+on public.concern_categories for select to authenticated using (true);
+
+create policy session_modes_select_authenticated
+on public.session_modes for select to authenticated using (true);
+
+create policy risk_levels_select_authenticated
+on public.risk_levels for select to authenticated using (true);
+
+create policy stress_brackets_select_authenticated
+on public.stress_brackets for select to authenticated using (true);
+
+create policy appointment_statuses_select_authenticated
+on public.appointment_statuses for select to authenticated using (true);
+
+create policy appointment_status_transitions_select_authenticated
+on public.appointment_status_transitions for select to authenticated using (true);
+
+create policy languages_select_authenticated
+on public.languages for select to authenticated using (true);
+
+-- ---------------------------------------------------------------------------
+-- users
+-- ---------------------------------------------------------------------------
+
+create policy users_select_own
+on public.users for select to authenticated
+using (auth_user_id = auth.uid());
+
+-- Staff may search student users. Counsellor/admin directory rows use the
+-- safe views, not this policy.
+create policy users_select_students_for_staff
+on public.users for select to authenticated
+using (
+    user_type = 'student'
+    and public.app_role() in ('counsellor', 'administrator')
+);
+
+create policy users_update_own
+on public.users for update to authenticated
+using (auth_user_id = auth.uid() and is_active = true)
+with check (auth_user_id = auth.uid() and is_active = true);
+
+-- ---------------------------------------------------------------------------
+-- students
+-- ---------------------------------------------------------------------------
+
+create policy students_select_own_or_staff
+on public.students for select to authenticated
+using (
+    user_id = public.app_identity_id()
+    or public.app_role() in ('counsellor', 'administrator')
+);
+
+create policy students_update_own
+on public.students for update to authenticated
+using (user_id = public.app_user_id())
+with check (user_id = public.app_user_id());
+
+-- ---------------------------------------------------------------------------
+-- counsellors / administrators
+-- ---------------------------------------------------------------------------
+
+create policy counsellors_select_authenticated
+on public.counsellors for select to authenticated
+using (public.app_role() is not null);
+
+create policy administrators_select_own
+on public.administrators for select to authenticated
+using (user_id = public.app_identity_id());
+
+-- ---------------------------------------------------------------------------
+-- counsellor associations
+-- ---------------------------------------------------------------------------
+
+create policy counsellor_specialisations_select_authenticated
+on public.counsellor_specialisations for select to authenticated
+using (public.app_role() is not null);
+
+create policy counsellor_languages_select_authenticated
+on public.counsellor_languages for select to authenticated
+using (public.app_role() is not null);
+
+-- ---------------------------------------------------------------------------
+-- availability_slots
+-- ---------------------------------------------------------------------------
+
+create policy availability_slots_select_authenticated
+on public.availability_slots for select to authenticated
+using (public.app_role() is not null);
+
+create policy availability_slots_insert_own_or_admin
+on public.availability_slots for insert to authenticated
+with check (
+    public.app_role() = 'administrator'
+    or counsellor_id = public.app_counsellor_id()
+);
+
+create policy availability_slots_update_own_or_admin
+on public.availability_slots for update to authenticated
+using (
+    public.app_role() = 'administrator'
+    or counsellor_id = public.app_counsellor_id()
+)
+with check (
+    public.app_role() = 'administrator'
+    or counsellor_id = public.app_counsellor_id()
+);
+
+create policy availability_slots_delete_own_or_admin
+on public.availability_slots for delete to authenticated
+using (
+    public.app_role() = 'administrator'
+    or counsellor_id = public.app_counsellor_id()
+);
+
+-- ---------------------------------------------------------------------------
+-- appointments
+-- ---------------------------------------------------------------------------
+
+create policy appointments_select_student_own
+on public.appointments for select to authenticated
+using (
+    public.app_role() = 'student'
+    and student_id = public.app_user_id()
+);
+
+create policy appointments_select_counsellor_own
+on public.appointments for select to authenticated
+using (
+    public.app_role() = 'counsellor'
+    and counsellor_id = public.app_counsellor_id()
+);
+
+create policy appointments_select_admin
+on public.appointments for select to authenticated
+using (public.app_role() = 'administrator');
+
+-- No INSERT/UPDATE/DELETE policies: every mutation is an RPC.
+
+-- ---------------------------------------------------------------------------
+-- session_records
+-- ---------------------------------------------------------------------------
+
+create policy session_records_select_counsellor_own
+on public.session_records for select to authenticated
+using (
+    public.app_role() = 'counsellor'
+    and counsellor_id = public.app_counsellor_id()
+);
+
+create policy session_records_insert_counsellor_own
+on public.session_records for insert to authenticated
+with check (
+    public.app_role() = 'counsellor'
+    and exists (
+        select 1
+        from public.appointments a
+        where a.id = appointment_id
+          and a.status_code = 'completed'
+          and a.counsellor_id = public.app_counsellor_id()
+    )
+);
+
+create policy session_records_update_counsellor_own
+on public.session_records for update to authenticated
+using (
+    public.app_role() = 'counsellor'
+    and counsellor_id = public.app_counsellor_id()
+)
+with check (
+    public.app_role() = 'counsellor'
+    and counsellor_id = public.app_counsellor_id()
+);
+
+create policy session_records_delete_counsellor_archived
+on public.session_records for delete to authenticated
+using (
+    public.app_role() = 'counsellor'
+    and counsellor_id = public.app_counsellor_id()
+    and is_archived = true
+);
+
+-- ---------------------------------------------------------------------------
+-- resources and their subtype rows
+-- ---------------------------------------------------------------------------
+
+create policy resources_select_students_published
+on public.resources for select to authenticated
+using (
+    public.app_role() = 'student'
+    and is_published = true
+);
+
+create policy resources_select_staff
+on public.resources for select to authenticated
+using (public.app_role() in ('counsellor', 'administrator'));
+
+create policy article_resources_select_visible
+on public.article_resources for select to authenticated
+using (
+    exists (
+        select 1 from public.resources r
+        where r.id = resource_id
+          and (
+              (public.app_role() = 'student' and r.is_published = true)
+              or public.app_role() in ('counsellor', 'administrator')
+          )
+    )
+);
+
+create policy video_resources_select_visible
+on public.video_resources for select to authenticated
+using (
+    exists (
+        select 1 from public.resources r
+        where r.id = resource_id
+          and (
+              (public.app_role() = 'student' and r.is_published = true)
+              or public.app_role() in ('counsellor', 'administrator')
+          )
+    )
+);
+
+create policy audio_resources_select_visible
+on public.audio_resources for select to authenticated
+using (
+    exists (
+        select 1 from public.resources r
+        where r.id = resource_id
+          and (
+              (public.app_role() = 'student' and r.is_published = true)
+              or public.app_role() in ('counsellor', 'administrator')
+          )
+    )
+);
+
+create policy pdf_resources_select_visible
+on public.pdf_resources for select to authenticated
+using (
+    exists (
+        select 1 from public.resources r
+        where r.id = resource_id
+          and (
+              (public.app_role() = 'student' and r.is_published = true)
+              or public.app_role() in ('counsellor', 'administrator')
+          )
+    )
+);
+
+create policy hotline_resources_select_visible
+on public.hotline_resources for select to authenticated
+using (
+    exists (
+        select 1 from public.resources r
+        where r.id = resource_id
+          and (
+              (public.app_role() = 'student' and r.is_published = true)
+              or public.app_role() in ('counsellor', 'administrator')
+          )
+    )
+);
+
+create policy resource_target_brackets_select_visible
+on public.resource_target_brackets for select to authenticated
+using (
+    exists (
+        select 1 from public.resources r
+        where r.id = resource_id
+          and (
+              (public.app_role() = 'student' and r.is_published = true)
+              or public.app_role() in ('counsellor', 'administrator')
+          )
+    )
+);
+
+-- Resource/subtype writes are security-definer RPCs only.
+
+-- ---------------------------------------------------------------------------
+-- enquiries
+-- ---------------------------------------------------------------------------
+
+create policy enquiries_select_student_own
+on public.enquiries for select to authenticated
+using (
+    public.app_role() = 'student'
+    and exists (
+        select 1
+        from public.identified_enquiries ie
+        where ie.enquiry_id = id
+          and ie.student_id = public.app_user_id()
+    )
+);
+
+create policy enquiries_select_counsellor_inbox
+on public.enquiries for select to authenticated
+using (public.app_role() = 'counsellor');
+
+create policy enquiries_update_counsellor_reply
+on public.enquiries for update to authenticated
+using (public.app_role() = 'counsellor')
+with check (public.app_role() = 'counsellor');
+
+create policy enquiries_delete_student_own_open
+on public.enquiries for delete to authenticated
+using (
+    public.app_role() = 'student'
+    and status = 'open'
+    and exists (
+        select 1
+        from public.identified_enquiries ie
+        where ie.enquiry_id = id
+          and ie.student_id = public.app_user_id()
+    )
+);
+
+create policy identified_enquiries_select_own_or_counsellor
+on public.identified_enquiries for select to authenticated
+using (
+    (public.app_role() = 'student' and student_id = public.app_user_id())
+    or public.app_role() = 'counsellor'
+);
+
+-- anonymous_enquiries deliberately has NO SELECT policy. Anonymous access is
+-- only through get_enquiry_by_code() and withdraw_enquiry_by_code().
+
+-- ---------------------------------------------------------------------------
+-- feedback
+-- ---------------------------------------------------------------------------
+
+create policy feedback_select_student_own
+on public.feedback for select to authenticated
+using (
+    public.app_role() = 'student'
+    and student_id = public.app_user_id()
+);
+
+create policy feedback_select_counsellor_own
+on public.feedback for select to authenticated
+using (
+    public.app_role() = 'counsellor'
+    and counsellor_id = public.app_counsellor_id()
+);
+
+create policy feedback_insert_student_completed
+on public.feedback for insert to authenticated
+with check (
+    public.app_role() = 'student'
+    and exists (
+        select 1
+        from public.appointments a
+        where a.id = appointment_id
+          and a.student_id = public.app_user_id()
+          and a.status_code = 'completed'
+    )
+);
+
+create policy feedback_delete_student_own
+on public.feedback for delete to authenticated
+using (
+    public.app_role() = 'student'
+    and student_id = public.app_user_id()
+);
+
+-- ============================================================================
+-- 15. PRIVILEGES
+-- ============================================================================
+
+revoke all on table
+    public.concern_categories,
+    public.session_modes,
+    public.risk_levels,
+    public.stress_brackets,
+    public.appointment_statuses,
+    public.appointment_status_transitions,
+    public.languages,
+    public.users,
+    public.students,
+    public.counsellors,
+    public.administrators,
+    public.counsellor_specialisations,
+    public.counsellor_languages,
+    public.availability_slots,
+    public.appointments,
+    public.session_records,
+    public.feedback,
+    public.resources,
+    public.article_resources,
+    public.video_resources,
+    public.audio_resources,
+    public.pdf_resources,
+    public.hotline_resources,
+    public.resource_target_brackets,
+    public.enquiries,
+    public.identified_enquiries,
+    public.anonymous_enquiries
+from public, anon, authenticated;
+
+-- Read privileges. RLS decides which rows are visible.
+grant select on table
+    public.concern_categories,
+    public.session_modes,
+    public.risk_levels,
+    public.stress_brackets,
+    public.appointment_statuses,
+    public.appointment_status_transitions,
+    public.languages,
+    public.users,
+    public.students,
+    public.counsellors,
+    public.administrators,
+    public.counsellor_specialisations,
+    public.counsellor_languages,
+    public.availability_slots,
+    public.appointments,
+    public.session_records,
+    public.feedback,
+    public.resources,
+    public.article_resources,
+    public.video_resources,
+    public.audio_resources,
+    public.pdf_resources,
+    public.hotline_resources,
+    public.resource_target_brackets,
+    public.enquiries,
+    public.identified_enquiries,
+    public.anonymous_enquiries
+to authenticated;
+
+-- Profile editing: only safe columns. Type, email, student ID and active flag
+-- are not directly mutable.
+grant update (full_name, phone) on public.users to authenticated;
+grant update (programme, preferred_session_mode) on public.students to authenticated;
+
+-- Availability management.
+grant insert (counsellor_id, start_at, end_at)
+    on public.availability_slots to authenticated;
+grant update (counsellor_id, start_at, end_at)
+    on public.availability_slots to authenticated;
+grant delete on public.availability_slots to authenticated;
+
+-- Session record creation/editing. Ownership is filled by the trigger.
+grant insert (appointment_id, private_notes, public_summary, risk_code,
+              follow_up_needed, follow_up_due)
+    on public.session_records to authenticated;
+grant update (private_notes, public_summary, risk_code, follow_up_needed,
+              follow_up_due, is_archived)
+    on public.session_records to authenticated;
+grant delete on public.session_records to authenticated;
+
+-- Students rate/delete their own feedback; counsellors only read.
+grant insert (appointment_id, rating, comment) on public.feedback to authenticated;
+grant delete on public.feedback to authenticated;
+
+-- Counsellor reply and linked student withdrawal.
+grant update (status, reply, recommended_resource_id)
+    on public.enquiries to authenticated;
+grant delete on public.enquiries to authenticated;
+
+-- Appointments and all resource writes are RPC-only. No INSERT/UPDATE/DELETE
+-- grants are issued for those tables or for the user/counsellor hierarchy.
+
+-- Views.
+revoke all on table
+    public.v_students,
+    public.v_counsellors,
+    public.v_administrators,
+    public.v_availability_slots,
+    public.v_appointments,
+    public.v_session_records,
+    public.v_feedback,
+    public.v_resources,
+    public.v_enquiries,
+    public.student_session_summaries
+from public, anon, authenticated;
+
+grant select on table
+    public.v_students,
+    public.v_counsellors,
+    public.v_administrators,
+    public.v_availability_slots,
+    public.v_appointments,
+    public.v_session_records,
+    public.v_feedback,
+    public.v_resources,
+    public.v_enquiries,
+    public.student_session_summaries
+to authenticated;
+
+-- Helpers used by RLS.
+revoke execute on function public.app_user_id() from public, anon;
+grant execute on function public.app_user_id() to authenticated;
+
+revoke execute on function public.app_identity_id() from public, anon;
+grant execute on function public.app_identity_id() to authenticated;
+
+revoke execute on function public.app_role() from public, anon;
+grant execute on function public.app_role() to authenticated;
+
+revoke execute on function public.app_counsellor_id() from public, anon;
+grant execute on function public.app_counsellor_id() to authenticated;
+
+-- Business methods.
+revoke execute on function public.book_appointment(uuid, text, text, text) from public, anon;
+grant execute on function public.book_appointment(uuid, text, text, text) to authenticated;
+
+revoke execute on function public.reschedule_appointment(uuid, uuid) from public, anon;
+grant execute on function public.reschedule_appointment(uuid, uuid) to authenticated;
+
+revoke execute on function public.cancel_appointment(uuid) from public, anon;
+grant execute on function public.cancel_appointment(uuid) to authenticated;
+
+revoke execute on function public.update_appointment_status(uuid, text) from public, anon;
+grant execute on function public.update_appointment_status(uuid, text) to authenticated;
+
+revoke execute on function public.counsellor_reschedule_appointment(uuid, uuid) from public, anon;
+grant execute on function public.counsellor_reschedule_appointment(uuid, uuid) to authenticated;
+
+revoke execute on function public.create_followup_appointment(uuid, uuid) from public, anon;
+grant execute on function public.create_followup_appointment(uuid, uuid) to authenticated;
+
+revoke execute on function public.deactivate_account() from public, anon;
+grant execute on function public.deactivate_account() to authenticated;
+
+revoke execute on function public.update_student_profile(text, text, text, text) from public, anon;
+grant execute on function public.update_student_profile(text, text, text, text) to authenticated;
+
+revoke execute on function public.delete_counsellor(uuid) from public, anon;
+grant execute on function public.delete_counsellor(uuid) to authenticated;
+
+revoke execute on function public.create_counsellor(text, text, text[], text[], text) from public, anon;
+grant execute on function public.create_counsellor(text, text, text[], text[], text) to authenticated;
+
+revoke execute on function public.update_counsellor(uuid, text, text, text[], text[], text, boolean) from public, anon;
+grant execute on function public.update_counsellor(uuid, text, text, text[], text[], text, boolean) to authenticated;
+
+revoke execute on function public.create_resource(text, text, text, text, text, text[], boolean, text, text) from public, anon;
+grant execute on function public.create_resource(text, text, text, text, text, text[], boolean, text, text) to authenticated;
+
+revoke execute on function public.update_resource(uuid, text, text, text, text, text, text[], boolean, text, text) from public, anon;
+grant execute on function public.update_resource(uuid, text, text, text, text, text, text[], boolean, text, text) to authenticated;
+
+revoke execute on function public.delete_resource(uuid) from public, anon;
+grant execute on function public.delete_resource(uuid) to authenticated;
+
+revoke execute on function public.submit_enquiry(text, text, boolean) from public, anon;
+grant execute on function public.submit_enquiry(text, text, boolean) to authenticated;
+
+revoke execute on function public.get_enquiry_by_code(text) from public, anon;
+grant execute on function public.get_enquiry_by_code(text) to authenticated;
+
+revoke execute on function public.withdraw_enquiry_by_code(text) from public, anon;
+grant execute on function public.withdraw_enquiry_by_code(text) to authenticated;
+
+revoke execute on function public.admin_dashboard_stats() from public, anon;
+grant execute on function public.admin_dashboard_stats() to authenticated;
+
+-- Trigger/helper functions are not callable from the API.
+revoke execute on function public.set_updated_at() from public, anon, authenticated;
+revoke execute on function public.validate_availability_slot() from public, anon, authenticated;
+revoke execute on function public.prevent_booked_slot_delete() from public, anon, authenticated;
+revoke execute on function public.validate_appointment_counsellor() from public, anon, authenticated;
+revoke execute on function public.enforce_appointment_status_transition() from public, anon, authenticated;
+revoke execute on function public.prepare_session_record() from public, anon, authenticated;
+revoke execute on function public.guard_session_record_update() from public, anon, authenticated;
+revoke execute on function public.prevent_unarchived_session_record_delete() from public, anon, authenticated;
+revoke execute on function public.prepare_feedback() from public, anon, authenticated;
+revoke execute on function public.protect_enquiry_reply() from public, anon, authenticated;
+revoke execute on function public.validate_resource_subtype() from public, anon, authenticated;
+revoke execute on function public.validate_enquiry_subtype() from public, anon, authenticated;
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+revoke execute on function public.resolve_concern_category(text) from public, anon, authenticated;
+revoke execute on function public.resolve_session_mode(text) from public, anon, authenticated;
+revoke execute on function public.resolve_stress_bracket(text) from public, anon, authenticated;
+revoke execute on function public.resolve_resource_type(text) from public, anon, authenticated;
+
+notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- 4. Reference rows needed by the copy
+-- ============================================================================
+
+insert into public.concern_categories (code, label, sort_order) values
+    ('stress', 'Stress', 1),
+    ('anxiety', 'Anxiety', 2),
+    ('academic_pressure', 'Academic Pressure', 3),
+    ('relationships', 'Relationships', 4),
+    ('sleep', 'Sleep', 5),
+    ('financial', 'Financial', 6),
+    ('loneliness', 'Loneliness', 7),
+    ('other', 'Other', 8)
+on conflict (code) do nothing;
+
+insert into public.session_modes (code, label, sort_order) values
+    ('in_person', 'In person', 1),
+    ('online', 'Online', 2)
+on conflict (code) do nothing;
+
+insert into public.risk_levels (code, label, rank) values
+    ('low', 'Low', 1),
+    ('medium', 'Medium', 2),
+    ('high', 'High', 3)
+on conflict (code) do nothing;
+
+insert into public.stress_brackets (code, label, min_score, max_score, sort_order) values
+    ('low', 'Low', 0, 13, 1),
+    ('moderate', 'Moderate', 14, 26, 2),
+    ('high', 'High', 27, 40, 3)
+on conflict (code) do nothing;
+
+insert into public.appointment_statuses (code, label, is_terminal, sort_order) values
+    ('pending', 'Pending', false, 1),
+    ('confirmed', 'Confirmed', false, 2),
+    ('completed', 'Completed', true, 3),
+    ('no_show', 'No show', true, 4),
+    ('cancelled', 'Cancelled', true, 5)
+on conflict (code) do nothing;
+
+insert into public.appointment_status_transitions (from_status_code, to_status_code) values
+    ('pending', 'confirmed'),
+    ('pending', 'cancelled'),
+    ('confirmed', 'completed'),
+    ('confirmed', 'no_show'),
+    ('confirmed', 'cancelled')
+on conflict do nothing;
+
+insert into public.languages (name) values
+    ('English'), ('Bahasa Melayu'), ('Mandarin')
+on conflict do nothing;
+
+-- ============================================================================
+-- 5. Copy old rows into the new class tables
+-- ============================================================================
+
+-- Students and administrators keep their profile ids. A counsellor user uses
+-- the old counsellor directory id, so appointment/record/feedback foreign keys
+-- remain unchanged. The auth user id is stored separately.
+insert into public.users (
+    id, auth_user_id, email, full_name, phone, is_active, user_type,
+    created_at, updated_at
+)
+select
+    p.id, p.id, lower(btrim(p.email)), p.full_name, p.phone, p.is_active,
+    'student', p.created_at, p.updated_at
+from legacy.profiles p
+where p.role = 'student';
+
+insert into public.users (
+    id, auth_user_id, email, full_name, phone, is_active, user_type,
+    created_at, updated_at
+)
+select
+    p.id, p.id, lower(btrim(p.email)), p.full_name, p.phone, p.is_active,
+    'administrator', p.created_at, p.updated_at
+from legacy.profiles p
+where p.role = 'admin';
+
+insert into public.users (
+    id, auth_user_id, email, full_name, phone, is_active, user_type,
+    created_at, updated_at
+)
+select
+    c.id,
+    c.user_id,
+    lower(btrim(c.email)),
+    c.full_name,
+    (select p.phone from legacy.profiles p where p.id = c.user_id limit 1),
+    c.is_active and coalesce(
+        (select p.is_active from legacy.profiles p where p.id = c.user_id limit 1),
+        true
+    ),
+    'counsellor',
+    c.created_at,
+    c.updated_at
+from legacy.counsellors c;
+
+-- Admin whitelist entries that never had a profile still become proper
+-- administrator objects, with no Auth link until that email signs up.
+insert into public.users (
+    id, auth_user_id, email, full_name, phone, is_active, user_type,
+    created_at, updated_at
+)
+select
+    gen_random_uuid(),
+    null,
+    lower(btrim(aw.email)),
+    'System Administrator',
+    null,
+    true,
+    'administrator',
+    aw.created_at,
+    aw.created_at
+from legacy.admin_whitelist aw
+where not exists (
+    select 1 from public.users u where lower(u.email) = lower(btrim(aw.email))
+);
+
+insert into public.students (
+    user_id, student_id, programme, preferred_session_mode, created_at, updated_at
+)
+select
+    p.id,
+    btrim(p.student_id),
+    btrim(p.programme),
+    coalesce(p.preferred_session_mode, 'in_person'),
+    p.created_at,
+    p.updated_at
+from legacy.profiles p
+where p.role = 'student';
+
+insert into public.administrators (user_id, created_at)
+select u.id, u.created_at
+from public.users u
+where u.user_type = 'administrator';
+
+insert into public.counsellors (user_id, bio, created_at, updated_at)
+select c.id, coalesce(c.bio, ''), c.created_at, c.updated_at
+from legacy.counsellors c;
+
+-- OOP association rows from the old text[] arrays.
+insert into public.languages (name)
+select distinct btrim(lang)
+from legacy.counsellors c
+cross join unnest(c.languages) as lang
+where btrim(lang) <> ''
+on conflict do nothing;
+
+insert into public.counsellor_specialisations (counsellor_id, category_code)
+select distinct c.id, cc.code
+from legacy.counsellors c
+cross join unnest(c.specialisations) as spec
+join public.concern_categories cc on lower(cc.label) = lower(btrim(spec))
+where btrim(spec) <> '';
+
+insert into public.counsellor_languages (counsellor_id, language_id)
+select distinct c.id, l.language_id
+from legacy.counsellors c
+cross join unnest(c.languages) as lang
+join public.languages l on lower(l.name) = lower(btrim(lang))
+where btrim(lang) <> '';
+
+-- The old availability guard rejects past history, so it is disabled only for
+-- this copy. The transaction restores it before commit.
+alter table public.availability_slots disable trigger trg_availability_slot_guard;
+
+insert into public.availability_slots (
+    id, counsellor_id, start_at, end_at, created_at, updated_at
+)
+select id, counsellor_id, start_at, end_at, created_at, updated_at
+from legacy.availability_slots;
+
+insert into public.appointments (
+    id, student_id, counsellor_id, slot_id, mode_code, concern_code, note,
+    status_code, created_at, updated_at
+)
+select
+    a.id, a.student_id, a.counsellor_id, a.slot_id, a.mode, cc.code, a.note,
+    a.status, a.created_at, a.updated_at
+from legacy.appointments a
+join public.concern_categories cc on lower(cc.label) = lower(a.concern_category);
+
+update public.appointments a
+set follow_up_of = old.follow_up_of
+from legacy.appointments old
+where old.id = a.id
+  and old.follow_up_of is not null;
+
+-- Copy records/feedback with the prepare triggers disabled so archived state,
+-- ownership and original timestamps are preserved exactly.
+alter table public.session_records disable trigger trg_session_record_prepare;
+alter table public.feedback disable trigger trg_feedback_prepare;
+
+insert into public.session_records (
+    id, appointment_id, counsellor_id, student_id, private_notes,
+    public_summary, risk_code, follow_up_needed, follow_up_due, is_archived,
+    created_at, updated_at
+)
+select
+    r.id, r.appointment_id, r.counsellor_id, r.student_id, r.private_notes,
+    r.public_summary, r.risk_level, r.follow_up_needed, r.follow_up_due,
+    r.is_archived, r.created_at, r.updated_at
+from legacy.session_records r;
+
+insert into public.feedback (
+    id, appointment_id, student_id, counsellor_id, rating, comment, created_at
+)
+select
+    f.id, f.appointment_id, f.student_id, f.counsellor_id, f.rating,
+    f.comment, f.created_at
+from legacy.feedback f;
+
+insert into public.resources (
+    id, title, description, category_code, resource_type, is_published,
+    created_at, updated_at
+)
+select
+    r.id,
+    r.title,
+    r.description,
+    cc.code,
+    lower(r.media_type),
+    r.is_published,
+    r.created_at,
+    r.updated_at
+from legacy.resources r
+join public.concern_categories cc on lower(cc.label) = lower(r.category);
+
+insert into public.article_resources (resource_id, content_url)
+select id, content_url from legacy.resources where lower(media_type) = 'article';
+
+insert into public.video_resources (resource_id, content_url)
+select id, content_url from legacy.resources where lower(media_type) = 'video';
+
+insert into public.audio_resources (resource_id, content_url)
+select id, content_url from legacy.resources where lower(media_type) = 'audio';
+
+insert into public.pdf_resources (resource_id, content_url)
+select id, content_url from legacy.resources where lower(media_type) = 'pdf';
+
+insert into public.hotline_resources (
+    resource_id, phone_number, operating_hours, website_url
+)
+select id, null, null, content_url
+from legacy.resources
+where lower(media_type) = 'hotline';
+
+insert into public.resource_target_brackets (resource_id, bracket_code)
+select distinct r.id, b.code
+from legacy.resources r
+cross join unnest(r.target_stress_brackets) as bracket
+join public.stress_brackets b on b.code = lower(btrim(bracket))
+where btrim(bracket) <> '';
+
+insert into public.enquiries (
+    id, reference_code, category_code, message, status, reply,
+    recommended_resource_id, replied_at, enquiry_type, created_at, updated_at
+)
+select
+    e.id,
+    e.reference_code,
+    cc.code,
+    e.message,
+    e.status,
+    e.reply,
+    e.recommended_resource_id,
+    e.replied_at,
+    case when e.is_anonymous then 'anonymous' else 'identified' end,
+    e.created_at,
+    e.updated_at
+from legacy.enquiries e
+join public.concern_categories cc on lower(cc.label) = lower(e.category);
+
+insert into public.identified_enquiries (enquiry_id, student_id)
+select e.id, e.student_id
+from legacy.enquiries e
+where not e.is_anonymous;
+
+insert into public.anonymous_enquiries (enquiry_id)
+select e.id
+from legacy.enquiries e
+where e.is_anonymous;
+
+-- The reply trigger runs on the insert above and stamps replied_at with now().
+-- Restore the original timestamp without changing the reply text.
+update public.enquiries e
+set replied_at = old.replied_at
+from legacy.enquiries old
+where old.id = e.id;
+
+-- Restore the guard triggers for normal application behaviour. Do not ALTER
+-- enquiries here: its deferred subtype checks are pending until COMMIT.
+alter table public.availability_slots enable trigger trg_availability_slot_guard;
+alter table public.session_records enable trigger trg_session_record_prepare;
+alter table public.feedback enable trigger trg_feedback_prepare;
+
+-- ============================================================================
+-- 6. Verify the copy before COMMIT
+-- ============================================================================
+
+do $verify$
+declare
+    v_expected bigint;
+    v_actual bigint;
+begin
+    select count(*) into v_expected from legacy.profiles where role = 'student';
+    select count(*) into v_actual from public.students;
+    if v_actual <> v_expected then
+        raise exception 'Student copy mismatch: expected %, got %', v_expected, v_actual;
+    end if;
+
+    select count(*) into v_expected from legacy.counsellors;
+    select count(*) into v_actual from public.counsellors;
+    if v_actual <> v_expected then
+        raise exception 'Counsellor copy mismatch: expected %, got %', v_expected, v_actual;
+    end if;
+
+    select count(*) into v_expected from legacy.availability_slots;
+    select count(*) into v_actual from public.availability_slots;
+    if v_actual <> v_expected then
+        raise exception 'Availability copy mismatch: expected %, got %', v_expected, v_actual;
+    end if;
+
+    select count(*) into v_expected from legacy.appointments;
+    select count(*) into v_actual from public.appointments;
+    if v_actual <> v_expected then
+        raise exception 'Appointment copy mismatch: expected %, got %', v_expected, v_actual;
+    end if;
+
+    select count(*) into v_expected from legacy.session_records;
+    select count(*) into v_actual from public.session_records;
+    if v_actual <> v_expected then
+        raise exception 'Session record copy mismatch: expected %, got %', v_expected, v_actual;
+    end if;
+
+    select count(*) into v_expected from legacy.feedback;
+    select count(*) into v_actual from public.feedback;
+    if v_actual <> v_expected then
+        raise exception 'Feedback copy mismatch: expected %, got %', v_expected, v_actual;
+    end if;
+
+    select count(*) into v_expected from legacy.resources;
+    select count(*) into v_actual from public.resources;
+    if v_actual <> v_expected then
+        raise exception 'Resource copy mismatch: expected %, got %', v_expected, v_actual;
+    end if;
+
+    select count(*) into v_expected from legacy.enquiries;
+    select count(*) into v_actual from public.enquiries;
+    if v_actual <> v_expected then
+        raise exception 'Enquiry copy mismatch: expected %, got %', v_expected, v_actual;
+    end if;
+
+    if exists (
+        select 1
+        from legacy.profiles p
+        where p.role in ('student', 'admin')
+          and not exists (select 1 from public.users u where u.id = p.id)
+    ) then
+        raise exception 'Some old student/admin profiles were not copied to users.';
+    end if;
+
+    if exists (
+        select 1
+        from legacy.counsellors c
+        where not exists (select 1 from public.users u where u.id = c.id)
+    ) then
+        raise exception 'Some old counsellors were not copied to users.';
+    end if;
+
+    if exists (
+        select 1
+        from legacy.admin_whitelist aw
+        where not exists (
+            select 1 from public.users u where lower(u.email) = lower(aw.email)
+        )
+    ) then
+        raise exception 'Some admin whitelist emails were not copied to administrators.';
+    end if;
+
+    if (select count(*) from public.users) <> (
+        (select count(*) from public.students)
+        + (select count(*) from public.counsellors)
+        + (select count(*) from public.administrators)
+    ) then
+        raise exception 'users contains rows with no matching subtype.';
+    end if;
+
+    if exists (
+        select 1
+        from public.appointments a
+        join legacy.appointments old on old.id = a.id
+        where old.follow_up_of is distinct from a.follow_up_of
+    ) then
+        raise exception 'Appointment follow-up links did not copy correctly.';
+    end if;
+end;
+$verify$;
+
+commit;
+
+notify pgrst, 'reload schema';

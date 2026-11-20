@@ -53,12 +53,12 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.DateTimeUtils
-import com.example.counselling.feature.appointment.data.AppointmentRepository
-import com.example.counselling.feature.appointment.model.Appointment
-import com.example.counselling.feature.records.data.SessionRecordRepository
-import com.example.counselling.feature.records.model.SessionRecord
-import com.example.counselling.feature.records.model.TriageBucket
-import com.example.counselling.feature.records.model.triageRecords
+import com.example.counselling.feature.appointment.domain.AppointmentRepository
+import com.example.counselling.feature.appointment.domain.Appointment
+import com.example.counselling.feature.records.domain.SessionRecordRepository
+import com.example.counselling.feature.records.domain.SessionRecord
+import com.example.counselling.feature.records.domain.TriageBucket
+import com.example.counselling.feature.records.domain.TriageBoard
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.ConfirmDialog
@@ -122,7 +122,7 @@ private fun SessionRecordsScreen(
     var showArchived by rememberSaveable { mutableStateOf(false) }
     var recordToView by remember { mutableStateOf<SessionRecord?>(null) }
     var recordToDelete by remember { mutableStateOf<SessionRecord?>(null) }
-    val triage = remember(state.records) { state.records.triageRecords() }
+    val triage = remember(state.records) { TriageBoard().group(state.records) }
     val visibleRecords = remember(state.records, showArchived) {
         state.records.filter { showArchived || !it.isArchived }
     }

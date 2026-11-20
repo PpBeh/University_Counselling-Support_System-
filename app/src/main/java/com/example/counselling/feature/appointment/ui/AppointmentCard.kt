@@ -29,10 +29,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.counselling.core.AppConstants
 import com.example.counselling.core.DateTimeUtils
-import com.example.counselling.core.UserRole
-import com.example.counselling.feature.appointment.model.Appointment
+import com.example.counselling.core.domain.User
+import com.example.counselling.feature.appointment.domain.Appointment
 import com.example.counselling.ui.components.StatusChip
 import com.example.counselling.ui.theme.WarningContainer
 import com.example.counselling.ui.theme.WarningAmber
@@ -40,7 +39,7 @@ import com.example.counselling.ui.theme.WarningAmber
 @Composable
 fun AppointmentCard(
     appointment: Appointment,
-    viewerRole: UserRole,
+    viewer: User,
     modifier: Modifier = Modifier,
     isBusy: Boolean = false,
     onReschedule: (() -> Unit)? = null,
@@ -67,14 +66,17 @@ fun AppointmentCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = appointment.concernCategory,
+                        text = appointment.concern.label,
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
-                        text = when (viewerRole) {
-                            UserRole.STUDENT -> "with ${appointment.counsellorName}"
-                            UserRole.COUNSELLOR -> "Student: ${appointment.studentName}"
-                            UserRole.ADMIN -> "${appointment.studentName} with ${appointment.counsellorName}"
+                        text = when {
+                            viewer.permissions.canBookAppointments() ->
+                                "with ${appointment.counsellorName}"
+                            viewer.permissions.canViewPrivateSessionNotes() ->
+                                "Student: ${appointment.studentName}"
+                            else ->
+                                "${appointment.studentName} with ${appointment.counsellorName}"
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -82,7 +84,7 @@ fun AppointmentCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                StatusChip(status = appointment.status)
+                StatusChip(status = appointment.status.label)
             }
 
             Spacer(Modifier.height(12.dp))
@@ -97,9 +99,9 @@ fun AppointmentCard(
             )
             DetailRow(
                 icon = Icons.Outlined.LocationOn,
-                text = AppConstants.sessionModeLabels[appointment.mode] ?: appointment.mode,
+                text = appointment.mode.label,
             )
-            if (viewerRole == UserRole.ADMIN && appointment.studentCode != null) {
+            if (viewer.permissions.canViewAllAppointments()) {
                 DetailRow(
                     icon = Icons.Outlined.Person,
                     text = "Student ID: ${appointment.studentCode}",

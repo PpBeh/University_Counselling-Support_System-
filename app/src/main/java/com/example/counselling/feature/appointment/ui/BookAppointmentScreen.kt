@@ -43,8 +43,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.AppConstants
 import com.example.counselling.core.DateTimeUtils
 import com.example.counselling.core.SessionManager
-import com.example.counselling.feature.appointment.data.AppointmentRepository
-import com.example.counselling.feature.appointment.model.CounsellorMatch
+import com.example.counselling.feature.appointment.domain.AppointmentRepository
+import com.example.counselling.feature.appointment.domain.CounsellorMatch
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.AppTopBar
@@ -306,7 +306,7 @@ private fun MatchCard(
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
-                        text = match.specialisations.joinToString(" · "),
+                        text = match.specialisationLabels.joinToString(" Â· "),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
@@ -412,7 +412,7 @@ private fun SlotStep(
                         onClick = { onChooseSlot(slot.slotId) },
                         label = {
                             Text(
-                                "${DateTimeUtils.formatTime(slot.startAt)} – " +
+                                "${DateTimeUtils.formatTime(slot.startAt)} â€“ " +
                                     DateTimeUtils.formatTime(slot.endAt),
                             )
                         },

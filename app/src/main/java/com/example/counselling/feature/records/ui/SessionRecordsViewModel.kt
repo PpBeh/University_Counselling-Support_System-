@@ -1,20 +1,18 @@
 // Module 4 / Unique Feature 2 | Owner: Jeremy
 package com.example.counselling.feature.records.ui
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.example.counselling.core.MessageKind
-import com.example.counselling.core.UiMessage
-import com.example.counselling.feature.appointment.data.AppointmentRepository
-import com.example.counselling.feature.records.data.SessionRecordRepository
-import com.example.counselling.feature.records.model.SessionRecord
-import kotlinx.coroutines.channels.Channel
+import com.example.counselling.core.domain.AppointmentStatus
+import com.example.counselling.core.ui.BaseViewModel
+import com.example.counselling.feature.appointment.domain.Appointment
+import com.example.counselling.feature.appointment.domain.AppointmentRepository
+import com.example.counselling.feature.records.domain.SessionRecord
+import com.example.counselling.feature.records.domain.SessionRecordRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -23,21 +21,19 @@ data class SessionRecordsUiState(
     val isRefreshing: Boolean = false,
     val error: String? = null,
     val records: List<SessionRecord> = emptyList(),
-    val eligibleAppointments: List<com.example.counselling.feature.appointment.model.Appointment> =
-        emptyList(),
+    val eligibleAppointments: List<Appointment> = emptyList(),
     val busyRecordId: String? = null,
 )
+
+// OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
 
 class SessionRecordsViewModel(
     private val recordRepository: SessionRecordRepository,
     private val appointmentRepository: AppointmentRepository,
-) : ViewModel() {
+) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(SessionRecordsUiState())
     val uiState: StateFlow<SessionRecordsUiState> = _uiState.asStateFlow()
-
-    private val _messages = Channel<UiMessage>(Channel.BUFFERED)
-    val messages = _messages.receiveAsFlow()
 
     init {
         load()
@@ -80,7 +76,7 @@ class SessionRecordsViewModel(
             }
             val recordedAppointmentIds = records.map { it.appointmentId }.toSet()
             val eligible = appointments.filter {
-                it.status == "completed" && it.id !in recordedAppointmentIds
+                it.status == AppointmentStatus.Completed && it.id !in recordedAppointmentIds
             }
             _uiState.update {
                 it.copy(
@@ -100,21 +96,13 @@ class SessionRecordsViewModel(
             _uiState.update { it.copy(busyRecordId = record.id) }
             recordRepository.setArchived(record.id, archived)
                 .onSuccess {
-                    _messages.send(
-                        UiMessage(
-                            if (archived) "Session record archived." else "Session record restored.",
-                            MessageKind.SUCCESS,
-                        ),
+                    postSuccess(
+                        if (archived) "Session record archived." else "Session record restored.",
                     )
                     load()
                 }
                 .onFailure {
-                    _messages.send(
-                        UiMessage(
-                            it.message ?: "Could not update the archive state.",
-                            MessageKind.ERROR,
-                        ),
-                    )
+                    postError(it.message ?: "Could not update the archive state.")
                 }
             _uiState.update { it.copy(busyRecordId = null) }
         }
@@ -123,27 +111,18 @@ class SessionRecordsViewModel(
     fun deleteRecord(record: SessionRecord) {
         if (_uiState.value.busyRecordId != null) return
         if (!record.isArchived) {
-            _messages.trySend(
-                UiMessage(
-                    "Archive the record before deleting it permanently.",
-                    MessageKind.ERROR,
-                ),
-            )
+            postError("Archive the record before deleting it permanently.")
             return
         }
         viewModelScope.launch {
             _uiState.update { it.copy(busyRecordId = record.id) }
             recordRepository.deleteRecord(record.id)
                 .onSuccess {
-                    _messages.send(
-                        UiMessage("Archived session record permanently deleted.", MessageKind.SUCCESS),
-                    )
+                    postSuccess("Archived session record permanently deleted.")
                     load()
                 }
                 .onFailure {
-                    _messages.send(
-                        UiMessage(it.message ?: "Could not delete the record.", MessageKind.ERROR),
-                    )
+                    postError(it.message ?: "Could not delete the record.")
                 }
             _uiState.update { it.copy(busyRecordId = null) }
         }

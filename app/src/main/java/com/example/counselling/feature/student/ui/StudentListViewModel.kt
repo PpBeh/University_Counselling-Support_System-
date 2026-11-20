@@ -2,12 +2,12 @@
 // Counsellors and admins can search the student directory by name or ID.
 package com.example.counselling.feature.student.ui
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.example.counselling.feature.student.data.ProfileRepository
-import com.example.counselling.feature.student.model.Profile
+import com.example.counselling.core.domain.Student
+import com.example.counselling.core.ui.BaseViewModel
+import com.example.counselling.feature.student.domain.StudentRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,12 +19,14 @@ data class StudentListUiState(
     val isRefreshing: Boolean = false,
     val error: String? = null,
     val query: String = "",
-    val students: List<Profile> = emptyList(),
+    val students: List<Student> = emptyList(),
 )
 
+// OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
+
 class StudentListViewModel(
-    private val profileRepository: ProfileRepository,
-) : ViewModel() {
+    private val studentRepository: StudentRepository,
+) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(StudentListUiState())
     val uiState: StateFlow<StudentListUiState> = _uiState.asStateFlow()
@@ -50,7 +52,7 @@ class StudentListViewModel(
                     error = null,
                 )
             }
-            profileRepository.getStudents()
+            studentRepository.getStudents()
                 .onSuccess { students ->
                     _uiState.update {
                         it.copy(
@@ -74,8 +76,8 @@ class StudentListViewModel(
     }
 
     companion object {
-        fun factory(profileRepository: ProfileRepository) = viewModelFactory {
-            initializer { StudentListViewModel(profileRepository) }
+        fun factory(studentRepository: StudentRepository) = viewModelFactory {
+            initializer { StudentListViewModel(studentRepository) }
         }
     }
 }

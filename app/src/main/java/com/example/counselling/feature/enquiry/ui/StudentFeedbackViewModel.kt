@@ -1,21 +1,19 @@
 // Module 6 | Owner: Michael
 package com.example.counselling.feature.enquiry.ui
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.example.counselling.core.MessageKind
-import com.example.counselling.core.UiMessage
-import com.example.counselling.feature.appointment.data.AppointmentRepository
-import com.example.counselling.feature.appointment.model.Appointment
-import com.example.counselling.feature.enquiry.data.FeedbackRepository
-import com.example.counselling.feature.enquiry.model.FeedbackRow
-import kotlinx.coroutines.channels.Channel
+import com.example.counselling.core.domain.AppointmentStatus
+import com.example.counselling.core.domain.Rating
+import com.example.counselling.core.ui.BaseViewModel
+import com.example.counselling.feature.appointment.domain.Appointment
+import com.example.counselling.feature.appointment.domain.AppointmentRepository
+import com.example.counselling.feature.enquiry.domain.Feedback
+import com.example.counselling.feature.enquiry.domain.FeedbackRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -24,21 +22,20 @@ data class StudentFeedbackUiState(
     val isRefreshing: Boolean = false,
     val error: String? = null,
     val completedAppointments: List<Appointment> = emptyList(),
-    val feedback: List<FeedbackRow> = emptyList(),
+    val feedback: List<Feedback> = emptyList(),
     val isSubmitting: Boolean = false,
     val busyFeedbackId: String? = null,
 )
 
+// OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
+
 class StudentFeedbackViewModel(
     private val feedbackRepository: FeedbackRepository,
     private val appointmentRepository: AppointmentRepository,
-) : ViewModel() {
+) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(StudentFeedbackUiState())
     val uiState: StateFlow<StudentFeedbackUiState> = _uiState.asStateFlow()
-
-    private val _messages = Channel<UiMessage>(Channel.BUFFERED)
-    val messages = _messages.receiveAsFlow()
 
     init {
         load()
@@ -49,43 +46,41 @@ class StudentFeedbackViewModel(
 
     fun submitRating(appointmentId: String, rating: Int, comment: String) {
         if (_uiState.value.isSubmitting) return
-        if (rating !in 1..5) {
-            _messages.trySend(UiMessage("Choose a rating from 1 to 5 stars.", MessageKind.ERROR))
+        val ratingValue = try {
+            Rating.of(rating)
+        } catch (_: Exception) {
+            postError("Choose a rating from 1 to 5 stars.")
             return
         }
         if (comment.length > 500) {
-            _messages.trySend(UiMessage("Comment must be 500 characters or fewer.", MessageKind.ERROR))
+            postError("Comment must be 500 characters or fewer.")
             return
         }
         viewModelScope.launch {
             _uiState.update { it.copy(isSubmitting = true) }
-            feedbackRepository.submitFeedback(appointmentId, rating, comment)
+            feedbackRepository.submitFeedback(appointmentId, ratingValue, comment)
                 .onSuccess {
-                    _messages.send(UiMessage("Thank you for your feedback.", MessageKind.SUCCESS))
+                    postSuccess("Thank you for your feedback.")
                     load()
                 }
                 .onFailure {
-                    _messages.send(
-                        UiMessage(it.message ?: "Could not submit feedback.", MessageKind.ERROR),
-                    )
+                    postError(it.message ?: "Could not submit feedback.")
                 }
             _uiState.update { it.copy(isSubmitting = false) }
         }
     }
 
-    fun deleteRating(feedback: FeedbackRow) {
+    fun deleteRating(feedback: Feedback) {
         if (_uiState.value.busyFeedbackId != null) return
         viewModelScope.launch {
             _uiState.update { it.copy(busyFeedbackId = feedback.id) }
             feedbackRepository.deleteFeedback(feedback.id)
                 .onSuccess {
-                    _messages.send(UiMessage("Feedback removed.", MessageKind.SUCCESS))
+                    postSuccess("Feedback removed.")
                     load()
                 }
                 .onFailure {
-                    _messages.send(
-                        UiMessage(it.message ?: "Could not remove feedback.", MessageKind.ERROR),
-                    )
+                    postError(it.message ?: "Could not remove feedback.")
                 }
             _uiState.update { it.copy(busyFeedbackId = null) }
         }
@@ -101,7 +96,7 @@ class StudentFeedbackViewModel(
                 )
             }
             val appointments = appointmentRepository.getAppointments()
-            val feedback = feedbackRepository.getFeedbackWithAppointments()
+            val feedback = feedbackRepository.getFeedback()
             appointments.onFailure { error ->
                 _uiState.update { state ->
                     state.copy(
@@ -128,9 +123,9 @@ class StudentFeedbackViewModel(
                     isRefreshing = false,
                     error = null,
                     completedAppointments = appointments.getOrThrow()
-                        .filter { it.status == "completed" }
-                        .sortedByDescending { it.slotStart },
-                    feedback = feedback.getOrThrow().map { it.feedback },
+                        .filter { it.status == AppointmentStatus.Completed }
+                        .sortedByDescending { it.slot.start },
+                    feedback = feedback.getOrThrow(),
                 )
             }
         }

@@ -38,9 +38,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.MessageKind
 import com.example.counselling.core.UiMessage
-import com.example.counselling.feature.resource.data.ResourceRepository
-import com.example.counselling.feature.resource.model.ResourceRow
-import com.example.counselling.feature.resource.model.SelfCheckContent
+import com.example.counselling.feature.resource.domain.ResourceRepository
+import com.example.counselling.feature.resource.domain.Resource
+import com.example.counselling.feature.resource.domain.SelfCheckContent
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.EmptyState
@@ -107,8 +107,8 @@ fun SelfCheckRoute(
 @Composable
 private fun SelfCheckScreen(
     state: SelfCheckUiState,
-    questions: List<com.example.counselling.feature.resource.model.SelfCheckQuestion>,
-    options: List<com.example.counselling.feature.resource.model.SelfCheckAnswerOption>,
+    questions: List<com.example.counselling.feature.resource.domain.SelfCheckQuestion>,
+    options: List<com.example.counselling.feature.resource.domain.SelfCheckAnswerOption>,
     snackbarHostState: SnackbarHostState,
     onBack: () -> Unit,
     onStart: () -> Unit,
@@ -118,7 +118,7 @@ private fun SelfCheckScreen(
     onRetryRecommendations: () -> Unit,
     onRetake: () -> Unit,
     onBook: (String) -> Unit,
-    onOpenResource: (ResourceRow) -> Unit,
+    onOpenResource: (Resource) -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -202,8 +202,8 @@ private fun IntroContent(onStart: () -> Unit) {
 @Composable
 private fun QuestionContent(
     state: SelfCheckUiState,
-    questions: List<com.example.counselling.feature.resource.model.SelfCheckQuestion>,
-    options: List<com.example.counselling.feature.resource.model.SelfCheckAnswerOption>,
+    questions: List<com.example.counselling.feature.resource.domain.SelfCheckQuestion>,
+    options: List<com.example.counselling.feature.resource.domain.SelfCheckAnswerOption>,
     onSelect: (Int) -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
@@ -280,7 +280,7 @@ private fun ResultContent(
     onRetryRecommendations: () -> Unit,
     onRetake: () -> Unit,
     onBook: (String) -> Unit,
-    onOpenResource: (ResourceRow) -> Unit,
+    onOpenResource: (Resource) -> Unit,
 ) {
     val result = state.result ?: return
     Column(
@@ -362,7 +362,7 @@ private fun ResultContent(
 }
 
 @Composable
-private fun ResourceRecommendation(resource: ResourceRow, onOpen: () -> Unit) {
+private fun ResourceRecommendation(resource: Resource, onOpen: () -> Unit) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -374,7 +374,7 @@ private fun ResourceRecommendation(resource: ResourceRow, onOpen: () -> Unit) {
         Column(modifier = Modifier.padding(14.dp)) {
             Text(resource.title, style = MaterialTheme.typography.titleSmall)
             Text(
-                text = "${resource.category} · ${resource.mediaType}",
+                text = "${resource.category.label} · ${resource.mediaType}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(top = 2.dp),

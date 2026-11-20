@@ -2,12 +2,12 @@
 // Students read only the safe student_session_summaries view.
 package com.example.counselling.feature.records.ui
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.example.counselling.feature.records.data.SessionRecordRepository
-import com.example.counselling.feature.records.model.StudentSessionSummaryRow
+import com.example.counselling.core.ui.BaseViewModel
+import com.example.counselling.feature.records.domain.SessionRecordRepository
+import com.example.counselling.feature.records.domain.StudentSessionSummary
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,12 +18,14 @@ data class StudentSummariesUiState(
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
     val error: String? = null,
-    val summaries: List<StudentSessionSummaryRow> = emptyList(),
+    val summaries: List<StudentSessionSummary> = emptyList(),
 )
+
+// OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
 
 class StudentSummariesViewModel(
     private val repository: SessionRecordRepository,
-) : ViewModel() {
+) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(StudentSummariesUiState())
     val uiState: StateFlow<StudentSummariesUiState> = _uiState.asStateFlow()

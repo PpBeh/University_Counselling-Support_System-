@@ -1,214 +1,144 @@
-# Setup Guide — University Counselling Appointment & Support System
+# Setup Guide — OOP Refactor (Phase 7)
 
-**Module code:** AMCS2194 · Diploma Year 2 mini project  
-**App package:** `com.example.counselling`  
-**Stack:** Kotlin · Jetpack Compose · Material 3 · MVVM · Supabase (Auth + Postgres/PostgREST)
+**Project:** University Counselling Appointment & Support System (AMCS2194)
+**Database:** PostgreSQL / Supabase, OOP class-table schema
+**Fresh schema:** [`supabase/schema.sql`](../supabase/schema.sql)
+**Existing-project migration:** [`supabase/migrations/20261120_oop_refactor.sql`](../supabase/migrations/20261120_oop_refactor.sql)
 
-This guide takes a fresh Supabase project to a working demo database, then explains how to run the Android app, prove the privacy rules and run the test plan. Follow the order exactly, especially the SQL/user-creation order: the Auth trigger decides the role from the `admin_whitelist` and `counsellors` tables **at sign-up time**.
+> **Phase 7 status:** the OOP database, all six Android modules and the final
+> class/OOP documentation are complete. Test the SQL on a **copy** of the
+> Supabase project first, then recreate the demo Auth accounts for the final
+> walkthrough.
 
 ---
 
-## 0. Files used in this guide
+## 0. What changed
+
+The old `profiles`-with-role design is replaced by:
+
+- `users` supertype + `students`, `counsellors`, `administrators`
+- `resources` supertype + 5 subtype tables
+- `enquiries` supertype + identified/anonymous subtypes
+- association tables for specialisations, languages and target brackets
+- reference tables for categories, modes, risks, stress brackets and statuses
+- `appointment_status_transitions` as the database State-pattern table
+
+The old tables are preserved in schema `legacy` by the migration. They are not
+read by the new app.
+
+Files:
 
 ```text
 supabase/
-  schema.sql            # tables, constraints, RLS, views, triggers, RPCs
-  seed_reference.sql    # admin whitelist, counsellors, resources, future slots
-  seed_demo.sql         # demo appointments, records, enquiries, feedback
-  reset_demo_auth.sql   # demo-only Auth recovery; destructive, see §9.16
+  schema.sql                                  # fresh install
+  seed_reference.sql                          # fresh install reference data
+  seed_demo.sql                               # fresh install demo data
   migrations/
-    20261104_counsellor_session_actions.sql    # existing-project emergency actions
-    20261110_session_record_hard_delete.sql    # existing-project archived-record delete
+    20261120_oop_refactor.sql                 # non-destructive existing-project migration
+  optional_drop_old_tables.sql                # destructive, run only after verification
+  test_queries_oop_rls.sql                    # RLS/privacy proof
 docs/
-  SETUP_GUIDE.md        # this file
-  DATA_DICTIONARY.md
   ERD.mmd
-  MODULE_NOTES.md       # module ownership and implementation notes
-  FINAL_CHECKLIST.md    # submission / hand-off checklist
-supabase.properties     # shared publishable Supabase URL + key (tracked)
+  DATA_DICTIONARY.md
 ```
 
-Backend setup can be completed before the Android screens are finished. The SQL and RLS proof tests run entirely in the Supabase SQL Editor. Only the student-account fallback in Step 7 needs the app.
+---
+
+## 1. Prerequisites and configuration
+
+- Supabase project with SQL Editor access.
+- PostgreSQL 15+ (Supabase-managed).
+- Android Studio for the app phases.
+- The publishable Supabase URL and key in the shared
+  [`supabase.properties`](../supabase.properties).
+- Do **not** use a `service_role`/secret key in the Android app.
+
+If you use a local override, put only `sdk.dir` and local Supabase overrides in
+`local.properties`; it is git-ignored. The tracked shared file is intentional so
+a teammate can build the app.
 
 ---
 
-## 1. Three-tier architecture (presentation → business → data)
+# Part A — Fresh Supabase project
 
-| Tier | Where it lives | Responsibility |
-|---|---|---|
-| **Presentation** | `ui/` Compose screens, Material 3 theme, reusable components, `navigation/`, `feature/*/ui` | Renders state, collects input, shows Snackbar/errors, role-based bottom navigation |
-| **Business logic** | `core/Validators.kt`, ViewModel rules, and PostgreSQL functions/triggers | Field rules, ownership checks, 12-hour reschedule notice, max 2 active bookings, 7-day edit window, status transitions, role assignment |
-| **Data** | `feature/*/data` repositories + Supabase tables/views/RPCs | `Result<T>` queries/mutations, friendly error mapping, RLS-scoped reads and writes |
+## 2. Run the SQL in order
 
-Additional design choices:
+### 2.1 `supabase/schema.sql` — first
 
-- One `AppContainer` singleton is created by `CounsellingApp`; ViewModel factories receive repositories from it. Hilt/Koin are **not** used.
-- Each ViewModel exposes a `StateFlow<UiState>` and a one-case message channel for Snackbars.
-- All timestamps in Postgres are `timestamptz` (UTC); `DateTimeUtils` renders Asia/Kuala_Lumpur.
-- Security is enforced in the database as well as in the app. The Android app uses only the publishable/anon key, never a secret/service key.
+Paste the whole file into a new SQL Editor query and run it. It creates:
 
----
-
-## 2. Prerequisites
-
-| Item | Requirement |
-|---|---|
-| Android Studio | Any current stable version with Android SDK for API 26+ |
-| JDK | The JDK bundled with current Android Studio / JDK 17+ |
-| Emulator or phone | Android 8.0 (API 26) or newer, internet access |
-| Supabase account | Free tier is sufficient |
-| SQL editor | Supabase Dashboard → SQL Editor |
-| Network | The emulator/phone must be able to reach `https://<project>.supabase.co` |
-
-The app targets `minSdk 26`, as required by the brief.
-
----
-
-## 3. Create the Supabase project
-
-1. Go to <https://supabase.com/dashboard> and sign in.
-2. Click **New project**.
-3. Choose an organisation, a project name (for example `counselling-support`), a strong database password and the region closest to Malaysia (for example Singapore).
-4. Wait for the database to finish provisioning.
-5. In **Project Settings → API**, copy:
-   - **Project URL** (looks like `https://abcdefghijkl.supabase.co`)
-   - **Publishable key** (starts with `sb_publishable_...`) or the legacy **anon/public** key.
-6. Never copy the **secret**/`service_role` key into the Android project. The app must use only the publishable/anon key.
-
-> If you use new Supabase API keys, "publishable" is the safe client key. The secret key bypasses RLS and is for trusted server/administration only. It must never appear in `local.properties`, BuildConfig, source, screenshots or Git.
-
----
-
-## 4. Authentication settings
-
-Do this **before creating the demo users**, so the demo can sign in without checking email.
-
-1. Open **Authentication → Sign In / Providers → Email**.
-2. Keep the Email provider enabled.
-3. Turn **Confirm email** OFF (the brief explicitly permits this for the demo).
-4. Under password security settings, set:
-   - Minimum password length: **8**
-   - Require lowercase letter: **yes**
-   - Require uppercase letter: **yes**
-   - Require digit: **yes**
-   - Symbols: optional but recommended
-5. Save.
-
-Why this matters:
-
-- Supabase Auth is the server-side password authority. The app also validates 8+ characters with upper, lower and digit before calling `signUp` / `updateUser`.
-- With "Confirm email" off, the app can sign in immediately after registration and the demo accounts work without an SMTP server.
-
-If you create users in the Dashboard, tick **Auto Confirm User** (or the equivalent) so they are immediately usable.
-
----
-
-## 5. Run the SQL in the correct order
-
-Open **SQL Editor → New query** for each file. Paste the entire file and click **Run**. Wait for success before moving on.
-
-### 5.1 `supabase/schema.sql` — first
-
-This creates:
-
-- extensions (`btree_gist`, needed for the slot-overlap exclusion constraint)
-- all nine application tables
-- indexes, constraints, triggers and functions
-- row-level security policies and grants
-- `available_slots_view` and `student_session_summaries`
-- the `auth.users` trigger that assigns roles
+- 27 tables and 10 views
+- reference/association tables
+- class-table inheritance subtype triggers
+- RPCs and RLS policies
+- the `auth.users` sign-up trigger
 
 Verify:
 
 ```sql
-select table_name
+select count(*) as base_tables
 from information_schema.tables
-where table_schema = 'public'
-order by table_name;
-```
+where table_schema = 'public' and table_type = 'BASE TABLE';
+-- Expected: 27
 
-Expected: `admin_whitelist`, `appointments`, `availability_slots`, `counsellors`, `enquiries`, `feedback`, `profiles`, `resources`, `session_records` (plus the two views if your tool lists views separately).
-
-Check the availability trigger and view exist:
-
-```sql
-select tgname, tgenabled
-from pg_trigger
-where tgrelid = 'public.availability_slots'::regclass
-order by tgname;
-
-select table_name
+select count(*) as views
 from information_schema.views
-where table_schema = 'public'
-order by table_name;
+where table_schema = 'public';
+-- Expected: 10
+
+select count(*) as policies
+from pg_policies
+where schemaname = 'public';
+-- Expected: at least 26
 ```
 
-When `seed_demo.sql` has not run, `trg_availability_slot_guard` must be **enabled** (`O` or `true`, depending on the display). If it is disabled later, see Troubleshooting.
+If `btree_gist` is missing, enable it under **Database → Extensions** and re-run
+only the extension line, or run the schema again on a fresh project. The
+`availability_slots_no_overlap` exclusion constraint depends on it.
 
-> **Already applied an older schema?** Run both migrations once, in this order:
-> 1. [`supabase/migrations/20261104_counsellor_session_actions.sql`](../supabase/migrations/20261104_counsellor_session_actions.sql) — counsellor decline, emergency cancel/reschedule.
-> 2. [`supabase/migrations/20261110_session_record_hard_delete.sql`](../supabase/migrations/20261110_session_record_hard_delete.sql) — delete an archived session record.
->
-> A fresh run of `schema.sql` already includes both.
+### 2.2 `supabase/seed_reference.sql` — second, before Auth users
 
-### 5.2 `supabase/seed_reference.sql` — second, before users
+It seeds:
 
-This inserts:
-
-- the admin whitelist email
-- the two counsellor directory entries
-- the demo resource library
-- future availability slots generated from `now()` (weekdays, next four weeks, Kuala Lumpur time)
+- concern categories, modes, risks, stress brackets, statuses, transitions and
+  languages
+- one pre-provisioned administrator (`users` + `administrators`, auth null)
+- two pre-provisioned counsellors (`users` + `counsellors` + associations)
+- 11 resources (supertype + subtype + target brackets)
+- four weeks of free counsellor availability
 
 Verify:
 
 ```sql
-select email from public.admin_whitelist;
-select full_name, email, is_active from public.counsellors order by email;
-select count(*) as resources from public.resources;
-select count(*) as future_slots
-from public.availability_slots
-where start_at > now();
+select count(*) from public.concern_categories;          -- 8
+select count(*) from public.appointment_statuses;         -- 5
+select count(*) from public.appointment_status_transitions; -- 5
+select count(*) from public.counsellors;                 -- 2
+select count(*) from public.administrators;              -- 1
+select count(*) from public.resources;                   -- 11
+select count(*) from public.availability_slots;          -- 80, before demo history
 ```
 
-Expected:
+### 2.3 Create the Auth users — third
 
-- `admin@university.edu.my` is whitelisted.
-- Dr. Aisyah Rahman and Mr. Daniel Lim exist with `is_active = true`.
-- 11 resources (one is an unpublished draft).
-- Dozens of future slots.
+Staff rows already exist with `auth_user_id = NULL`; the sign-up trigger links
+them by email. Create the admin and two counsellor Auth accounts with these
+emails and their usual passwords:
 
-**Do not create the Auth users before this step.** If a counsellor email signs up before the counsellor row exists, the trigger gives it the student role and does not link the counsellor directory row.
+- `admin@university.edu.my`
+- `counsellor.aisyah@university.edu.my`
+- `counsellor.daniel@university.edu.my`
 
-### 5.3 Create the five demo Auth users — third
+Students must be created with metadata because they are a new student object.
+Create these two accounts in the Dashboard **with metadata** (or register them
+through the app once Phases 4–6 are complete):
 
-The trigger immediately creates the matching `profiles` row and chooses the role.
+| Email | Password | Metadata |
+|---|---|---|
+| `student.aina@student.university.edu.my` | `Demo@12345` | `full_name=Aina Zulaikha`, `student_id=DAMCS2401`, `programme=Diploma in Computer Science`, `phone=012-3456789`, `preferred_session_mode=in_person` |
+| `student.faris@student.university.edu.my` | `Demo@12345` | `full_name=Muhammad Faris`, `student_id=DAMCS2402`, `programme=Diploma in Information Technology`, `phone=+60123456789`, `preferred_session_mode=online` |
 
-#### Staff accounts (Dashboard)
-
-Go to **Authentication → Users → Add user**.
-
-| Account | Email | Password | Auto Confirm | Notes |
-|---|---|---|---|---|
-| Admin | `admin@university.edu.my` | `Demo@12345` | Yes | Pre-whitelisted by `seed_reference.sql` |
-| Counsellor 1 | `counsellor.aisyah@university.edu.my` | `Demo@12345` | Yes | Matches seeded counsellor row; links automatically |
-| Counsellor 2 | `counsellor.daniel@university.edu.my` | `Demo@12345` | Yes | Matches seeded counsellor row; links automatically |
-
-User metadata is optional for staff. The admin profile falls back to `System Administrator`; counsellor profiles take their official name from the `counsellors` row. If your Dashboard offers a metadata box and you want a custom admin name, use:
-
-```json
-{ "full_name": "System Administrator" }
-```
-
-#### Student accounts
-
-Student sign-up **requires metadata** (`full_name`, `student_id`, `programme`, `phone`, `preferred_session_mode`). There are two supported ways:
-
-**Option A (recommended if available): Dashboard metadata box**
-
-Use **Authentication → Users → Add user**, auto-confirm, and paste:
-
-Aina:
+The “Add user” metadata field, when available, must be a JSON object:
 
 ```json
 {
@@ -220,679 +150,273 @@ Aina:
 }
 ```
 
-Faris:
+Turn **Confirm email OFF** for the demo so the app receives a session
+immediately.
 
-```json
-{
-  "full_name": "Muhammad Faris",
-  "student_id": "DAMCS2402",
-  "programme": "Diploma in Information Technology",
-  "phone": "+60123456789",
-  "preferred_session_mode": "online"
-}
-```
+### 2.4 `supabase/seed_demo.sql` — fourth
 
-| Student | Email | Password |
-|---|---|---|
-| Aina Zulaikha | `student.aina@student.university.edu.my` | `Demo@12345` |
-| Muhammad Faris | `student.faris@student.university.edu.my` | `Demo@12345` |
+Run after all five Auth users exist. It creates two completed sessions with
+records and ratings, upcoming appointments, a cancelled session, and four
+enquiries with codes `ENQ-DEMO01`–`ENQ-DEMO04`.
 
-**Option B: Register in the app (always works)**
-
-If your Dashboard version does not show a user-metadata field:
-
-1. Complete Step 6 (confirm the shared Supabase config and run the app).
-2. Use the app's **Register** screen for Aina and then Faris, entering exactly the same emails, student IDs, programme, Malaysian phone and session mode shown above.
-3. Sign out between registrations.
-4. Return to the SQL Editor and run `seed_demo.sql`.
-
-Do not skip or guess the student metadata: the database trigger validates it and a malformed or missing field blocks sign-up with a friendly error (the Auth service may wrap trigger errors in a generic "Database error saving new user", so follow the field rules exactly).
-
-#### Verify role assignment before continuing
-
-```sql
-select p.email, p.role, p.is_active, c.id is not null as linked_counsellor
-from public.profiles p
-left join public.counsellors c on c.user_id = p.id
-order by p.role, p.email;
-```
-
-Expected:
-
-| email | role |
-|---|---|
-| `admin@university.edu.my` | `admin` |
-| `counsellor.aisyah@university.edu.my` | `counsellor` (linked) |
-| `counsellor.daniel@university.edu.my` | `counsellor` (linked) |
-| `student.aina@student.university.edu.my` | `student` |
-| `student.faris@student.university.edu.my` | `student` |
-
-If the admin is a student, see Troubleshooting (the whitelist was added too late).
-
-### 5.4 `supabase/seed_demo.sql` — fourth, after all users exist
-
-This script looks users up by email, verifies that the counsellor accounts are linked, then inserts historical and upcoming samples.
-
-It temporarily disables **only** `trg_availability_slot_guard` to insert past availability slots, then enables it again in the same transaction. Everything is idempotent where possible, so you can re-run it after fixing a setup problem.
-
-Expected SQL Editor notice:
-
-```text
-Demo data ready. Reference codes: ENQ-DEMO01 (open), ENQ-DEMO02 (answered), ENQ-DEMO03 (Aina, open), ENQ-DEMO04 (Faris, answered).
-```
+The script temporarily disables only the availability guard for historical
+slots and restores it; everything runs in one transaction.
 
 Verify:
 
 ```sql
-select reference_code, is_anonymous, student_id, status
-from public.enquiries
-where reference_code like 'ENQ-DEMO%'
-order by reference_code;
-
-select a.status, a.concern_category, s.start_at,
-       p.full_name as student, c.full_name as counsellor,
-       (a.follow_up_of is not null) as is_follow_up
-from public.appointments a
-join public.availability_slots s on s.id = a.slot_id
-join public.profiles p on p.id = a.student_id
-join public.counsellors c on c.id = a.counsellor_id
-order by s.start_at;
-
-select risk_level, follow_up_needed, follow_up_due, is_archived
-from public.session_records
-order by created_at;
+select count(*) from public.students;          -- 2
+select count(*) from public.counsellors;       -- 2
+select count(*) from public.administrators;    -- 1
+select count(*) from public.appointments;      -- 6
+select count(*) from public.session_records;   -- 2
+select count(*) from public.feedback;          -- 2
+select count(*) from public.enquiries;         -- 4
+select count(*) from public.resources;         -- 11
 ```
 
-Demo data summary:
-
-| Data | What the demo contains |
-|---|---|
-| Upcoming appointments | Aina: confirmed with Aisyah + pending follow-up (tagged) with Aisyah. Faris: pending online with Daniel. |
-| Completed sessions | Aina with Aisyah (high risk, follow-up due in ~2 days); Faris with Daniel (medium risk, due in ~6 days) |
-| Cancelled session | Faris with Aisyah (historical) |
-| Session records | 2, both follow-up needed; Triage board shows Due soon / Later. Overdue starts empty and fills naturally when a due date passes. |
-| Feedback | Aina 5 stars; Faris 4 stars |
-| Enquiries | `ENQ-DEMO01` anonymous open, `ENQ-DEMO02` anonymous answered, `ENQ-DEMO03` Aina open, `ENQ-DEMO04` Faris answered |
-| Resources | 10 published + 1 draft |
-| Slots | Future weekday slots for four weeks + three historical slots used by completed/cancelled demo sessions |
-
-If the script reports missing users or roles, **do not work around it by editing random tables**. Follow the order in this guide; Troubleshooting below has the exact repair query.
-
 ---
 
-## 6. Configure the Android app
+## 3. Verify the subtype rules
 
-### 6.1 Supabase configuration (shared file + local override)
+```sql
+-- Every resource has exactly one matching subtype row.
+select count(*) as invalid_resources
+from public.resources r
+where (
+    select count(*) from (
+        select 1 from public.article_resources where resource_id = r.id
+        union all select 1 from public.video_resources where resource_id = r.id
+        union all select 1 from public.audio_resources where resource_id = r.id
+        union all select 1 from public.pdf_resources where resource_id = r.id
+        union all select 1 from public.hotline_resources where resource_id = r.id
+    ) x
+) <> 1;
+-- Expected: 0
 
-The repository **intentionally tracks** `supabase.properties` at the project root so the publishable project URL and client key travel with the source code for hand-off:
+-- Every enquiry has exactly one identity subtype.
+select count(*) as invalid_enquiries
+from public.enquiries e
+where (
+    select count(*) from (
+        select 1 from public.identified_enquiries where enquiry_id = e.id
+        union all select 1 from public.anonymous_enquiries where enquiry_id = e.id
+    ) x
+) <> 1;
+-- Expected: 0
 
-```properties
-SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
-SUPABASE_ANON_KEY=YOUR_PUBLISHABLE_OR_ANON_KEY
+-- Every users row has exactly one role subtype.
+select count(*) as invalid_users
+from public.users u
+where (
+    select count(*) from (
+        select 1 from public.students where user_id = u.id
+        union all select 1 from public.counsellors where user_id = u.id
+        union all select 1 from public.administrators where user_id = u.id
+    ) x
+) <> 1;
+-- Expected: 0
 ```
 
-This is the **publishable client key**, not a server secret. It is designed to be shipped inside a client app; row-level security protects the data. The file is checked in and is not ignored.
+---
 
-`local.properties` remains machine-specific because it also contains `sdk.dir`. It is still ignored by Git and can override the Supabase values for your own machine. The build order is:
+# Part B — Existing Supabase project (non-destructive)
 
-1. `local.properties` (if present and non-blank)
-2. `supabase.properties`
-3. `SUPABASE_URL` / `SUPABASE_ANON_KEY` environment variables
+## 4. Prepare a copy
 
-Rules:
+**Do not run the migration on the live demo project first.**
 
-- No quotes around values.
-- `SUPABASE_URL` has **no** trailing slash.
-- `SUPABASE_ANON_KEY` must be the publishable/anon key. **Never use a service_role/secret key** in either file, BuildConfig, source, screenshots or Git.
-- If you point at a different Supabase project, update the shared file (or your local override) and rebuild.
+1. In Supabase, create a copy/restore or a second project.
+2. Apply the current old schema if the copy is empty.
+3. Verify the copy has the old nine tables: `profiles`, `admin_whitelist`,
+   `counsellors`, `availability_slots`, `appointments`, `session_records`,
+   `resources`, `enquiries`, `feedback`.
+4. Export/back up the copy.
+5. Run
+   [`supabase/migrations/20261120_oop_refactor.sql`](../supabase/migrations/20261120_oop_refactor.sql)
+   once in the SQL Editor.
 
-Gradle exposes the values as `BuildConfig.SUPABASE_URL` and `BuildConfig.SUPABASE_ANON_KEY`. Missing values still allow the project to compile; the app shows a configuration-error screen at launch. No URL or key is hard-coded in Kotlin source.
+What it does:
 
-For the exact Gradle code, see [app/build.gradle.kts](../app/build.gradle.kts).
+1. Preflights old tables, duplicate emails, UUID collisions, incomplete
+   counsellor profiles.
+2. Drops the old `auth.users` trigger temporarily.
+3. Moves the old tables/views to schema `legacy`; revokes API access to them.
+4. Creates the new OOP schema and reference rows.
+5. Copies users/subtypes, associations, slots, appointments, records, feedback,
+   resources/subtypes, enquiries/subtypes.
+6. Disables only the historical-slot and record-prepare guards for the copy
+   window, then restores them.
+7. Runs count/FK verification and **raises an error (rollback)** on mismatch.
+8. Keeps `legacy` for rollback.
 
-### 6.2 Run the app
+The old `profiles`/`counsellors`/etc. tables are **not dropped** by this
+migration.
 
-1. Open the project folder in Android Studio.
-2. Wait for Gradle sync / install dependencies.
-3. Choose an emulator or connected Android 8+ device.
-4. Run the `app` configuration.
-5. Sign in with a demo account or register a new student (a new registration always becomes a student unless the email is pre-approved).
+## 5. Verify the migrated copy
 
-Sign in as each role to verify navigation:
+```sql
+select count(*) from public.users;             -- students + counsellors + admins
+select count(*) from public.students;          -- = old profiles role student
+select count(*) from public.counsellors;       -- = old counsellors
+-- The old admin_whitelist is preserved only for rollback:
+select count(*) from legacy.admin_whitelist;
+select count(*) from public.appointments;      -- = old appointments
+select count(*) from public.session_records;   -- = old records
+select count(*) from public.feedback;          -- = old feedback
+select count(*) from public.resources;         -- = old resources
+select count(*) from public.enquiries;         -- = old enquiries
+```
 
-| Role | Bottom navigation (5 tabs) |
-|---|---|
-| Student | Home · Appointments · Resources · Enquiries · Profile |
-| Counsellor | Home · Schedule · Records · Enquiries · Profile |
-| Admin | Home · Counsellors · Students · Resources · Profile |
+Then run the subtype checks in Section 3. If any count is wrong, **do not**
+proceed and do not run the optional drop; restore the copy.
 
-The admin Home includes the read-only all-appointments list.
+## 6. Optional destructive cleanup
+
+[`supabase/optional_drop_old_tables.sql`](../supabase/optional_drop_old_tables.sql)
+drops schema `legacy` cascade. Run it only after:
+
+- migration verification passes,
+- a backup/export exists,
+- the new app is tested against the copy.
+
+Until then, `legacy` is the rollback copy. The app does not read it.
 
 ---
 
-## 7. Demo accounts
+## 7. Prove RLS and privacy
 
-All demo accounts use password **`Demo@12345`** (change it in a real deployment).
+Run [`supabase/test_queries_oop_rls.sql`](../supabase/test_queries_oop_rls.sql).
+It switches to the `authenticated` role with simulated JWTs and ends every
+block with `ROLLBACK`.
 
-| Role | Display name | Email | Student ID | Programme / specialisations | Preferred mode |
-|---|---|---|---|---|---|
-| Admin | System Administrator | `admin@university.edu.my` | — | — | — |
-| Counsellor | Dr. Aisyah Rahman | `counsellor.aisyah@university.edu.my` | — | Stress, Anxiety, Academic Pressure, Sleep | — |
-| Counsellor | Mr. Daniel Lim | `counsellor.daniel@university.edu.my` | — | Relationships, Loneliness, Financial, Academic Pressure, Other | — |
-| Student | Aina Zulaikha | `student.aina@student.university.edu.my` | `DAMCS2401` | Diploma in Computer Science | in_person |
-| Student | Muhammad Faris | `student.faris@student.university.edu.my` | `DAMCS2402` | Diploma in Information Technology | online |
+Key expected results on the demo data:
 
-**Known anonymous reference codes (from the seed):**
+| Test | Expected |
+|---|---|
+| Aina `users` | 1 |
+| Aina `appointments` | 3 |
+| Aina base `session_records` | 0 |
+| Aina safe summaries | 1 |
+| Aina `resources` | 10 published (draft hidden) |
+| Aina `enquiries` | 1 identified; anonymous 0 |
+| Aisyah own appointments | 4 |
+| Aisyah own records | 1 |
+| Aisyah students | 2 |
+| Aisyah inbox | 4 |
+| Admin appointments | 6 |
+| Admin records | 0 |
+| Admin enquiries | 0 |
+| Student direct resource insert | permission denied |
+| Student direct appointment insert | permission denied |
 
-- `ENQ-DEMO01` — open, safe to demonstrate "Check reply by reference code" and withdrawal
-- `ENQ-DEMO02` — answered, safe to demonstrate a counsellor reply
-- `ENQ-DEMO03` — Aina's linked, open enquiry
-- `ENQ-DEMO04` — Faris's linked, answered enquiry
+The old views are now `v_students`, `v_counsellors`, `v_administrators`,
+`v_availability_slots`, `v_appointments`, `v_session_records`, `v_feedback`,
+`v_resources`, `v_enquiries`, plus `student_session_summaries`.
 
-Because anonymous enquiries store no identity, the **student must copy and keep** the code. There is no way to recover a lost code from their account.
+Supabase Advisor may label these as **Security Definer View**. That is intentional
+for the same reason as the old safe views: each view is owner-rights and applies
+an explicit `app_role()`/`auth.uid()` predicate, while the base tables keep RLS.
+Do not flip a view to security-invoker without re-testing the privacy matrix.
 
 ---
 
-## 8. Role and privacy behaviour built into the backend
+## 8. Android configuration (for the later phases)
 
-| Behaviour | Backend mechanism |
-|---|---|
-| Sign-up role selection | `handle_new_user()`: admin whitelist → admin; counsellor email → counsellor and link; otherwise student |
-| Deactivated login | The app signs in, reads its own profile (`is_active = false`), signs out and shows a message. All app data policies also return nothing when `app_role()` is null. |
-| Student privacy | Students can only read their own appointments, own non-anonymous enquiries, own feedback and own public session summaries |
-| Private notes | No student or admin SELECT policy on `session_records`; students use a safe owner-rights view; admins use aggregate stats only |
-| Anonymous enquiries | `student_id` NULL, no identity columns returned by the lookup function, no direct SELECT policy for students |
-| Admin read-only appointments | Admin has an appointments SELECT policy but no write privilege or write policy |
-| Counsellor inbox | Counsellors can read all enquiries; anonymous rows have no student ID to display |
-| Role capture | Role is read from `profiles` through `app_role()`, never trusted from client metadata or JWT user metadata |
+The app still uses the old repositories until Phases 4–6. When the app phases
+begin:
+
+1. Keep `supabase.properties` tracked with the publishable URL/key.
+2. `build.gradle.kts` resolves from `local.properties` → `supabase.properties`
+   → environment.
+3. Build with `.\gradlew.bat :app:assembleDebug`.
+4. Install on the emulator with the latest APK.
+5. Do not test against the migrated database with the old APK; the old
+   repositories query `profiles`, which is now in `legacy`.
 
 ---
 
 ## 9. Troubleshooting
 
-### 9.1 "permission denied", "new row violates row-level security", or lists are always empty
+### “relation public.profiles does not exist”
+The database has been migrated to OOP, but the app is still the old build. This
+is expected until Phases 4–6; use the legacy schema only for inspection.
 
-1. Confirm you are signed in and the session has not expired.
-2. Check the account's profile and role:
-   ```sql
-   select p.id, p.email, p.role, p.is_active
-   from public.profiles p
-   where lower(p.email) = lower('student.aina@student.university.edu.my');
-   ```
-3. Check the JWT and helper inside a transaction (see the RLS proof section).
-4. Remember that RLS returns **zero rows** rather than an error for reads. An empty list can mean "not allowed", not "database broken".
-5. The admin is not allowed to read session notes or enquiries; that is intentional.
-6. For an insert, check that the app sends only the writable columns. For example, do not try to update `profiles.role` or set `session_records.counsellor_id`; those columns are protected.
-7. Sign out and back in after changing a role/profile in SQL, so the app refreshes its `SessionManager`.
+### Migration raises “duplicate email addresses”
+Resolve the duplicate in the old `profiles`, `counsellors` or `admin_whitelist`
+rows on the **copy**, then restore the backup and retry. Do not edit live data
+blindly.
 
-### 9.2 HTTP 401 / "Invalid JWT" / "Invalid API key"
-
-- Check `supabase.properties` (shared) and `local.properties` (machine override): both properties must resolve, with no quotes and no trailing slash on the URL.
-- The key must be the **publishable/anon** key. A mismatch between Project URL and key produces 401.
-- Rebuild after editing either configuration file; `BuildConfig` values are generated at build time.
-- Clear the app data or sign out/in after changing Supabase projects or keys.
-- Confirm the device clock/time zone is automatic and correct.
-- If email confirmation is on, sign-in fails with "Email not confirmed"; disable confirmation for the demo and/or auto-confirm the existing user.
-
-### 9.3 "relation ... does not exist" / "Could not find the table"
-
-- Run `schema.sql` again in the correct project. New API calls may be cached by PostgREST.
-- Reload the API schema:
-  ```sql
-  notify pgrst, 'reload schema';
-  ```
-  If that is not picked up, open **Project Settings → API → Reload schema cache** (or restart the local development session).
-- Check the Table Editor to confirm you are in the project whose URL/key match the resolved configuration.
-
-### 9.4 "function ... does not exist" or wrong RPC arguments
-
-- Run the current `schema.sql`; the functions and grants are all created there.
-- If the project already had the older schema, run the migrations in `supabase/migrations/` in date order:
-  1. `20261104_counsellor_session_actions.sql` — counsellor decline/cancel/reschedule.
-  2. `20261110_session_record_hard_delete.sql` — delete an archived session record.
-- Use the parameter names exactly as documented (e.g. `p_slot_id`, `p_mode`, `p_concern_category`, `p_note`). Supabase RPC parameter names are case-sensitive in the JSON request.
-- Check the function list:
-  ```sql
-  select proname, pg_get_function_identity_arguments(oid)
-  from pg_proc
-  where pronamespace = 'public'::regnamespace
-  order by proname;
-  ```
-
-### 9.5 `btree_gist` / exclusion constraint error
-
-If Supabase reports that the access method or operator class is unavailable:
-
-1. Enable the **btree_gist** extension from **Database → Extensions**.
-2. Re-run the table section in `schema.sql` (or the whole file on a fresh project).
-3. Do not replace the exclusion constraint with an app-only check; overlapping counsellor slots must be blocked by Postgres.
-
-### 9.6 Sign-up fails with "Database error saving new user"
-
-The Auth service hides some trigger errors behind a generic response. Common causes:
-
-- Missing student metadata fields or an invalid Malaysian phone number.
-- A duplicate student ID (case-insensitive).
-- The email is a counsellor email but the counsellor row has not been seeded, or an admin was created before the whitelist entry.
-- The preferred session mode is not exactly `in_person` or `online`.
-
-Use the app's Register screen (it sends all metadata) or your Dashboard metadata box. Correct fields and try a different demo email/ID if needed.
-
-If the error persists, test the trigger manually in SQL (as the SQL Editor's `postgres` role) by checking the auth attempt's metadata in **Authentication → Users**. In the demo, the simplest reliable path is to verify the order in Step 5 and recreate the affected user.
-
-### 9.7 Admin signed up as a student / counsellor not linked
-
-The trigger only runs at user creation. If the order was wrong:
-
-1. For an admin, insert/confirm the whitelist first:
-   ```sql
-   insert into public.admin_whitelist (email)
-   values ('admin@university.edu.my')
-   on conflict do nothing;
-   ```
-   Then fix the existing profile:
-   ```sql
-   update public.profiles
-   set role = 'admin'
-   where lower(email) = lower('admin@university.edu.my');
-   ```
-2. For a counsellor, confirm the seed row exists, then link it:
-   ```sql
-   update public.counsellors c
-   set user_id = u.id
-   from auth.users u
-   where lower(c.email) = lower('counsellor.aisyah@university.edu.my')
-     and lower(u.email) = lower(c.email);
-
-   update public.profiles p
-   set role = 'counsellor'
-   from auth.users u
-   where p.id = u.id
-     and lower(u.email) = lower('counsellor.aisyah@university.edu.my');
-   ```
-3. Sign out and in again.
-
-For a clean demo, deleting the affected Auth user and recreating it after fixing the seed order is usually simpler.
-
-### 9.8 `seed_demo.sql` fails
-
-- It deliberately requires the five demo users to exist with the right roles. Re-read its error message and Step 5.3.
-- It requires `seed_reference.sql` to have been run **before** the counsellor users were created.
-- If it fails, the whole DO block/transaction rolls back. Check the availability trigger state:
-  ```sql
-  select tgname, tgenabled
-  from pg_trigger
-  where tgrelid = 'public.availability_slots'::regclass
-    and tgname = 'trg_availability_slot_guard';
-  ```
-  If it is disabled (not `O`/`true`), enable it, then fix the cause and re-run:
-  ```sql
-  alter table public.availability_slots enable trigger trg_availability_slot_guard;
-  ```
-- If there are no future slots, run `seed_reference.sql` again; slots are generated relative to today.
-- If a demo student already has the maximum active appointments, remove/cancel one before re-running.
-
-### 9.9 Emulator / phone cannot connect
-
-- The app needs internet. An emulator is not automatically offline, but check Wi-Fi and mobile data.
-- A cloud Supabase URL is public internet; do **not** replace it with `localhost` or `10.0.2.2`.
-- `10.0.2.2` is only for reaching a server on the **host machine** from the Android emulator. It is not the Supabase cloud host.
-- Check that the device date/time is correct and the network has no captive portal.
-- Try opening `https://<project>.supabase.co` in the device browser.
-- If you use a VPN or corporate proxy, disable it temporarily.
-- After changing keys, uninstall/reinstall or clear app data.
-
-### 9.10 Wrong date/time or slots appear in the past
-
-- The database stores UTC. The app displays Asia/Kuala_Lumpur.
-- If you see a time shift, check `DateTimeUtils` and the emulator time zone; do not write local-time strings into `timestamptz` columns.
-- Seed slots are generated relative to `now()` in KL. Re-run `seed_reference.sql` if the demo database was created more than four weeks ago.
-
-### 9.11 A slot cannot be deleted
-
-This is expected when an appointment (including a cancelled/historical one) still references it. Deleting would break session history. Choose another free slot. A completely unused free slot can be deleted by its counsellor or an admin.
-
-### 9.12 A session record cannot be edited
-
-- Only records created within the last 7 days can have their content edited. Archive/unarchive is still allowed.
-- Only completed appointments can have records.
-- Follow-up due dates must be in the future when set/updated.
-- Duplicate records for one appointment are blocked.
-
-To test the 7-day rule without waiting, use a **disposable test appointment**, temporarily bypass the update guard to backdate the fixture, then immediately re-enable enforcement:
+### Migration raises “profile id collides with a counsellor id”
+The old UUIDs overlap. Inspect the specific rows with:
 
 ```sql
--- Replace <RECORD_ID> with a disposable record. Never leave the trigger disabled.
-alter table public.session_records disable trigger trg_session_record_update;
-update public.session_records
-set created_at = now() - interval '8 days'
-where id = '<RECORD_ID>';
-alter table public.session_records enable trigger trg_session_record_update;
+select p.id, p.email, c.email
+from public.profiles p
+join public.counsellors c on c.id = p.id;
 ```
 
-Then try editing the record's content in the app as the owning counsellor. It must be rejected with the 7-day message; archiving must still work.
+### “This administrator profile is incomplete” during Auth sign-up
+The pre-provisioned `users` row exists but its subtype is missing. Re-run
+`seed_reference.sql`; it completes missing administrator/counsellor subtypes.
 
-### 9.13 Supabase Advisor lists "Security Definer View"
+### `btree_gist` / exclusion error
+Enable the extension in **Database → Extensions**, or run on a fresh project.
+The availability overlap rule is a real database constraint.
 
-This is expected for `available_slots_view` and `student_session_summaries`. The brief requires a safe view that can read data the caller cannot read directly:
+### Auth sign-up says “Database error saving new user”
+Check **Logs → Auth** and the SQL error. Common causes:
 
-- `available_slots_view` must see all bookings so it can hide booked slots.
-- `student_session_summaries` must filter the base table that students cannot access.
+- student metadata missing (`full_name`, `student_id`, `programme`, `phone`,
+  `preferred_session_mode`);
+- duplicate student ID;
+- student row already exists with a different type;
+- the pre-provisioned staff row is missing its subtype.
 
-Both views expose only safe columns, and only `authenticated` is granted SELECT. Do not switch them to `security_invoker = true`; that would break the booking catalogue and could hide records from students. If you make any change to a view, re-check the RLS proof queries in Section 11.
-
-### 9.14 Anonymous enquiry code lost
-
-There is no identity linkage to recover it by design. The counsellor can see the content in the inbox, but the student cannot retrieve their own anonymous row without the code. For testing, use the seeded codes.
-
-### 9.15 Admin cannot read notes or individual feedback
-
-Intentional. Admin only has aggregate counts (`admin_dashboard_stats()`); private notes are counsellor-only. Do not "fix" this by adding an admin policy.
-
-### 9.16 Demo Auth rows are broken: login 500, delete errors, create errors
-
-Symptoms:
-
-- Known demo email → `500 Database error querying schema`; unknown email → normal `400 invalid_credentials`.
-- Deleting a demo user in the Dashboard → generic “Database loading error”.
-- Creating a user in the Dashboard → “Database error creating user”.
-
-There are two separate causes:
-
-1. **The stored demo Auth rows were inserted with raw SQL** and are malformed for GoTrue login.
-2. **Deleting Auth users is blocked by restrictive app foreign keys**:
-   - `profiles` cascades from `auth.users`, but `appointments.student_id`, `session_records.student_id` and `feedback.student_id` use `ON DELETE RESTRICT`.
-   - The Dashboard cannot clear those dependencies, so it shows a generic loading error.
-   - Separately, creating a **student** directly in the Dashboard fails unless student metadata is supplied: the `handle_new_user` trigger requires `full_name`, `student_id`, `programme`, `phone` and `preferred_session_mode`. “Database error creating user” is the generic Auth wrapper for that trigger failure.
-
-**Do not insert into `auth.users` with SQL.** Recover the current demo project in this order:
-
-#### A. Clear the blocked dependencies and malformed Auth rows
-
-Run the full contents of [`supabase/reset_demo_auth.sql`](../supabase/reset_demo_auth.sql) in the Supabase SQL Editor.
-
-- It is **demo-only and destructive**: it clears all demo appointments, session records, feedback and enquiries, then removes the five demo Auth users.
-- It retains `admin_whitelist`, `counsellors`, `resources` and availability slots, so the reference seed remains useful.
-- It runs in one transaction; if a dependency is still blocked, everything rolls back.
-- If the script itself errors at the Auth deletion step, do not fight the Auth schema. Use a **fresh Supabase project** (Option B).
-
-#### B. Recreate staff accounts in the Dashboard
-
-In **Authentication → Users → Add user**, auto-confirm and password `Demo@12345`:
-
-- `admin@university.edu.my`
-- `counsellor.aisyah@university.edu.my`
-- `counsellor.daniel@university.edu.my`
-
-Staff do not need student metadata. If **these** creations also fail with “Database error creating user”, the Auth trigger/schema is damaged — create a fresh project rather than patching `auth.users`.
-
-#### C. Recreate the two students through the app
-
-The safest path is the app's **Register** screen. It supplies the metadata the trigger requires:
-
-- `student.aina@student.university.edu.my` / `Demo@12345`
-  - Aina Zulaikha, `DAMCS2401`, Diploma in Computer Science, `012-3456789`, in person
-- `student.faris@student.university.edu.my` / `Demo@12345`
-  - Muhammad Faris, `DAMCS2402`, Diploma in Information Technology, `+60123456789`, online
-
-Sign out between registrations. Turn **Confirm email OFF** first so the app receives an immediate session. If your Dashboard has a metadata JSON box, you may create them there instead with the same values.
-
-#### D. Restore demo data
-
-Run `supabase/seed_demo.sql` again. It restores demo appointments, records, enquiries and feedback. Re-run `seed_reference.sql` too if the four-week availability window has passed.
-
-#### Option B — Fresh project (recommended if creation still fails)
-
-The current project has no production data. A fresh project is the cleanest recovery:
-
-1. Create a new Supabase project.
-2. Run `schema.sql`, then `seed_reference.sql`.
-3. Create admin/counsellors in the Dashboard.
-4. Register Aina/Faris from the app.
-5. Run `seed_demo.sql`.
-6. Update the URL/key in `supabase.properties` (and `local.properties` if using a local override), then rebuild.
-
-If an unknown email *also* returns HTTP 500, check **Project Settings → General** for a paused project, review **Logs → Auth**, and contact Supabase support if the database is unavailable.
-
-### 9.17 Student cannot rate a completed session
-
-The database only accepts feedback when **all** of these are true:
-
-- the appointment status is `completed`
-- the appointment belongs to the signed-in student
-- no feedback already exists for that appointment
-
-In the app, use **Appointments → Past**, then either:
-
-- the **Rate session** button on the completed appointment card, or
-- the **Rate a session** link at the top of the Past tab.
-
-The latest build also refreshes this screen when it resumes, so a session completed by the counsellor while the student app was open should appear after a refresh.
-
-If the button is missing, install the latest APK. If tapping Rate fails with a Snackbar, check the backend grants and policies:
+### Admin signs in as student / counsellor not linked
+The migration links existing `counsellors.user_id` to
+`users.auth_user_id`; fresh setup links by email. Verify:
 
 ```sql
-select polname, cmd
-from pg_policies
-where schemaname = 'public' and tablename = 'feedback'
-order by polname;
-
-select grantee, privilege_type
-from information_schema.role_table_grants
-where table_schema = 'public'
-  and table_name = 'feedback'
-  and grantee = 'authenticated'
-order by privilege_type;
-
-select tgname
-from pg_trigger
-where tgrelid = 'public.feedback'::regclass
-  and not tgisinternal;
-```
-
-Expected:
-
-- policies for student select, counsellor select, student insert and student delete
-- `SELECT`, `INSERT`, `DELETE` grants for `authenticated`
-- trigger `trg_feedback_prepare`
-
-If any are missing, re-run `schema.sql` (it recreates policies, grants, functions and triggers without dropping the application tables) or apply the relevant feedback block. Existing feedback rows for a completed session cause the friendly “already rated” message; the student must remove their rating before rating again.
-
----
-
-## 10. Demo walkthrough (suggested order)
-
-1. **Student Aina** signs in. Home shows welcome and next appointment. Open **Self-Help Resources → Wellbeing Self-Check**, complete 10 questions, see score/bracket and recommendations; tap **Book a counsellor** on Moderate/High to open Smart Match.
-2. Aina books a new session with Daniel via **Appointments → Book**. Choose concern Anxiety to see Daniel ranked; pick a free slot; submit. Snackbar success.
-3. Try booking the same slot with a second student/Faris: friendly "just booked" message. Try a third active booking for Aina: max 2 message.
-4. Aina reschedules within 12 hours of a current appointment: blocked. Use a slot more than 12 hours away for success.
-5. Aina cancels an appointment; the slot returns to the catalogue.
-6. **Counsellor Aisyah** signs in. Schedule shows her appointments. Confirm a pending one; decline another pending request; cancel one confirmed session for an emergency; reschedule a confirmed session; then mark a confirmed one completed.
-7. Aisyah creates a session record for a completed appointment; review private/public fields, risk and follow-up due. Open **Records**; the Triage board shows due dates. Archive the record, then **Delete forever** it. Schedule a follow-up from a card; sign in to the student account to see the Follow-up tag.
-8. Aisyah opens **Enquiries**, filters Open, replies to `ENQ-DEMO01`/Aina's enquiry, attaches a resource, sets Answered.
-9. **Michael's Module 5**: counsellor/admin creates/edits a resource and toggles publish. Student sees only published items.
-10. Students rate a completed session (1–5 + comment), see their feedback, delete it, rate again.
-11. **Admin** signs in. Home lists all appointments read-only and aggregate stats. Add a counsellor, add weekly slots, edit a slot, try deleting a booked slot, and test the counsellor delete block. Open Students and search by name/ID.
-12. Anonymous flow: submit an anonymous enquiry as a student, copy the code, sign out, sign back in, check reply by code. Withdraw the open anonymous enquiry with its code.
-13. Deactivation: as a student with an upcoming appointment, attempt deactivate → blocked. Cancel active bookings → deactivate → attempt sign in → app signs out with an inactive message.
-14. Run the RLS proof queries in Section 11.
-
----
-
-## 11. Prove RLS and privacy
-
-These tests run as the SQL Editor's `postgres` role but switch to the `authenticated` role and set a simulated user JWT. They do not modify data. Always finish with `rollback`.
-
-### 11.1 Collect user IDs
-
-```sql
-select id, email
-from auth.users
-where email in (
-  'student.aina@student.university.edu.my',
-  'student.faris@student.university.edu.my',
+select u.email, u.user_type, u.auth_user_id, c.user_id as counsellor_subtype
+from public.users u
+left join public.counsellors c on c.user_id = u.id
+where lower(u.email) in (
+  'admin@university.edu.my',
   'counsellor.aisyah@university.edu.my',
-  'counsellor.daniel@university.edu.my',
-  'admin@university.edu.my'
-)
-order by email;
-```
-
-Copy the five UUIDs into the placeholders below.
-
-### 11.2 Student Aina: own data only, no base notes
-
-```sql
-begin;
-select set_config(
-  'request.jwt.claims',
-  '{"sub":"<AINA_UUID>","role":"authenticated","aud":"authenticated"}',
-  true
+  'counsellor.daniel@university.edu.my'
 );
-select set_config('request.jwt.claim.sub', '<AINA_UUID>', true);
-set local role authenticated;
-
--- 1. She sees only her own profile.
-select count(*) as profiles_visible from public.profiles;
--- Expected: 1
-
--- 2. No appointment outside her own student id.
-select count(*) as foreign_appointments
-from public.appointments
-where student_id <> auth.uid();
--- Expected: 0
-
--- 3. Base session_records table is inaccessible (no policy).
-select count(*) as base_records from public.session_records;
--- Expected: 0
-
--- 4. Safe summary view exposes her own completed summary only.
-select count(*) as summaries from public.student_session_summaries;
--- Expected: 1
-
--- 5. Student sees her linked non-anonymous enquiry, not the anonymous ones.
-select count(*) as own_enquiries
-from public.enquiries
-where student_id = auth.uid();
--- Expected: 1 (ENQ-DEMO03)
-
-select count(*) as anonymous_rows_visible
-from public.enquiries
-where is_anonymous = true;
--- Expected: 0
-
--- 6. The reference-code RPC can still read an anonymous enquiry safely.
-select reference_code, status, student_id
-from public.get_enquiry_by_code('ENQ-DEMO01');
--- Expected: one row, student_id is NULL (function does not even expose identity)
-
-rollback;
 ```
 
-Also inspect the view's public columns:
+### Student cannot rate a completed session
+The app-side grey-button bug is fixed in Phase 1 code, but the database still
+requires a completed appointment owned by the student and one rating per
+appointment. Check:
 
 ```sql
-select column_name
-from information_schema.columns
-where table_schema = 'public'
-  and table_name = 'student_session_summaries'
-order by ordinal_position;
+select a.id, a.status_code, f.id as feedback_id
+from public.appointments a
+left join public.feedback f on f.appointment_id = a.id
+where a.student_id = public.app_user_id();
 ```
 
-Expected: no `private_notes` and no `risk_level`.
+### Resources are always empty for a student
+Students only see `is_published = true` and the view uses their role. Check
+`v_resources` as the student JWT; do not query `resources` as postgres and
+assume the app result.
 
-### 11.3 Counsellor Aisyah: own sessions only, anonymous inbox without identity
-
-```sql
-begin;
-select set_config(
-  'request.jwt.claims',
-  '{"sub":"<AISYAH_UUID>","role":"authenticated","aud":"authenticated"}',
-  true
-);
-select set_config('request.jwt.claim.sub', '<AISYAH_UUID>', true);
-set local role authenticated;
-
-select count(*) as own_records from public.session_records;
--- Expected: 1 (Aina's record; Faris's record belongs to Daniel)
-
-select count(*) as own_ratings from public.feedback;
--- Expected: 1 (Aina's rating for Aisyah)
-
-select count(*) as inbox from public.enquiries;
--- Expected: 4 (all demo enquiries)
-
-select student_id as anonymous_student_id
-from public.enquiries
-where reference_code = 'ENQ-DEMO01';
--- Expected: NULL; no identity is stored for anonymous enquiries
-
-rollback;
-```
-
-### 11.4 Admin: oversight without private notes
-
-```sql
-begin;
-select set_config(
-  'request.jwt.claims',
-  '{"sub":"<ADMIN_UUID>","role":"authenticated","aud":"authenticated"}',
-  true
-);
-select set_config('request.jwt.claim.sub', '<ADMIN_UUID>', true);
-set local role authenticated;
-
-select count(*) as all_appointments from public.appointments;
--- Expected: >= 5 (seed data plus anything added during testing)
-
-select count(*) as base_records_from_admin from public.session_records;
--- Expected: 0. There is no admin SELECT policy, so private notes are blocked.
-
-select public.admin_dashboard_stats();
--- Expected: a JSON object containing total_students, total_counsellors,
--- upcoming_appointments, average_rating, etc. No notes or session text.
-
-select count(*) as enquiries_from_admin from public.enquiries;
--- Expected: 0 (admin oversight does not include the enquiry inbox)
-
-rollback;
-```
-
-### 11.5 Student cross-user write test (expected failure)
-
-Run in a separate transaction. The insert attempts to add a resource while authenticated as Aina; the role has no INSERT grant/policy. A privilege/RLS error is the expected pass condition. (Because the statement errors, your SQL session may need a rollback/new query afterwards.)
-
-```sql
-begin;
-select set_config('request.jwt.claims', '{"sub":"<AINA_UUID>","role":"authenticated"}', true);
-select set_config('request.jwt.claim.sub', '<AINA_UUID>', true);
-set local role authenticated;
-
-insert into public.resources (
-  title, description, category, media_type, content_url,
-  target_stress_brackets, is_published
-)
-values (
-  'Student should not be able to create this',
-  'This insert must be rejected by privileges and RLS.',
-  'Stress', 'Article', 'https://example.com/', array['low'], true
-);
--- Expected: ERROR: permission denied for table resources / row-level security
-
-rollback;
-```
-
-### 11.6 What this proves
-
-- All nine tables have RLS with policies, not just UI hiding.
-- A student cannot select another student's profile, appointments, enquiries, feedback or private notes.
-- An admin cannot read `private_notes`, and has no enquiry inbox policy.
-- The anonymous enquiry row contains no student identity and cannot be read by a student through the table.
-- The safe views expose only the intended columns.
+### Old demo Auth rows are broken
+The OOP migration does not repair malformed `auth.users` rows. If Dashboard
+login returns HTTP 500/DB schema errors, follow the clean Auth recovery in the
+project notes or use a fresh Supabase project. The migration preserves valid
+Auth UUIDs.
 
 ---
 
-## 12. CRUD and validation test checklist (Chapter 4 test plan)
+> The app UI still needs Phases 4–6 before these can be run end-to-end against
+> the OOP database. The module behaviours themselves do not change.
+
+## 10. CRUD and validation test checklist (Chapter 4 test plan)
 
 Use one row per test in your report. The "Expected result" column is the pass criterion. Test as each role with the demo accounts; reset by re-running `seed_demo.sql` or by creating fresh records.
 
@@ -1039,32 +563,71 @@ Use one row per test in your report. The "Expected result" column is the pass cr
 
 ---
 
-## 13. Reset the demo
+---
 
-If you need a clean run:
+## 11. Reset / rollback
 
-1. Create a new Supabase project (safest) and repeat Steps 3–6.
-2. Or, in the SQL Editor, drop the app views/tables **and** the Auth users, then re-run the scripts. Dropping application tables while Auth users still exist will leave users without profiles; delete/recreate the users or use a fresh project.
+### Fresh project
 
-`supabase.properties` intentionally tracks the publishable project URL and client key. Do **not** commit a service_role/secret key, screenshots containing a secret key, or database dumps containing real student data. Keep machine-specific `local.properties` out of Git.
+Re-running `seed_demo.sql` is idempotent for the demo rows; it will not duplicate
+the records, ratings, enquiries or appointments. Re-run `seed_reference.sql` if
+the four-week availability window has passed.
+
+For a full reset, create a new Supabase project and repeat Part A. Do not delete
+the shared `supabase.properties`.
+
+### Migrated project
+
+- The old tables are in `legacy`. To roll back before dropping it, restore the
+  project backup or rename/restore from `legacy`; do not point the app at the
+  new schema while still on the old APK.
+- [`optional_drop_old_tables.sql`](../supabase/optional_drop_old_tables.sql)
+  removes the rollback copy permanently.
+- Running `seed_demo.sql` twice is safe; it checks by appointment slot, record,
+  feedback and reference code.
 
 ---
 
-## 14. Quick reference
+## 12. Quick reference
 
-| Action | Command / location |
+| Item | Value |
 |---|---|
-| Run full backend | SQL files: `schema.sql` → `seed_reference.sql` → users → `seed_demo.sql` |
-| Reload PostgREST | `notify pgrst, 'reload schema';` |
-| Check roles | `select email, role, is_active from public.profiles order by email;` |
-| Find anonymous code | Seeded codes only: `ENQ-DEMO01`, `ENQ-DEMO02` |
-| Student mode format | `in_person` or `online` (lowercase, underscore) |
-| Phone format | `012-3456789` or `+60123456789` |
-| Seed slot trigger | `trg_availability_slot_guard` on `public.availability_slots` |
-| RLS helpers | `public.app_role()`, `public.app_counsellor_id()` |
-| Safe student summaries | `public.student_session_summaries` |
-| Available booking catalogue | `public.available_slots_view` |
-| Admin aggregate stats | `public.admin_dashboard_stats()` |
-| Counsellor emergency actions | `update_appointment_status` (decline/cancel) + `counsellor_reschedule_appointment` |
-| Existing project migrations | `supabase/migrations/20261104_counsellor_session_actions.sql`, then `20261110_session_record_hard_delete.sql` |
-| Delete archived record | Counsellor → Records → Show archived → Delete forever |
+| Fresh schema | `supabase/schema.sql` |
+| Existing-project migration | `supabase/migrations/20261120_oop_refactor.sql` |
+| Reference seed | `supabase/seed_reference.sql` |
+| Demo seed | `supabase/seed_demo.sql` |
+| Old-table cleanup | `supabase/optional_drop_old_tables.sql` |
+| RLS proof | `supabase/test_queries_oop_rls.sql` |
+| Supertype/subtype helpers | `public.app_user_id()`, `app_identity_id()`, `app_role()`, `app_counsellor_id()` |
+| Profile method | `update_student_profile` |
+| Appointment methods | `book_appointment`, `reschedule_appointment`, `cancel_appointment`, `update_appointment_status`, `counsellor_reschedule_appointment`, `create_followup_appointment` |
+| Aggregate methods | `create_counsellor`, `update_counsellor`, `create_resource`, `update_resource`, `delete_resource` |
+| Enquiry methods | `submit_enquiry`, `get_enquiry_by_code`, `withdraw_enquiry_by_code` |
+| Admin aggregate | `admin_dashboard_stats` |
+| Auth trigger | `public.handle_new_user()` on `auth.users` |
+| Views | `v_students`, `v_counsellors`, `v_administrators`, `v_availability_slots`, `v_appointments`, `v_session_records`, `v_feedback`, `v_resources`, `v_enquiries`, `student_session_summaries` |
+
+---
+
+## 13. Phase status
+
+| Area | Status |
+|---|---|
+| OOP database schema | Complete |
+| Non-destructive migration | Complete |
+| Reference/demo seeds | Complete |
+| RLS proof | Complete |
+| Android domain layer | ✅ Phase 2 (`core/domain`) |
+| Shared repository/ViewModel infrastructure | ✅ Phase 3 |
+| Beh feature repositories/DTOs/mappers | ✅ Phase 4 |
+| Jeremy feature repositories/DTOs/mappers | ✅ Phase 5 |
+| Michael feature repositories/DTOs/mappers | ✅ Phase 6 |
+| Beh modules (student, appointment, Smart Match) | ✅ Phase 4 |
+| Jeremy modules (counsellor, availability, records, triage) | ✅ Phase 5 |
+| Michael modules (resources, enquiries, feedback) | ✅ Phase 6 |
+| Class diagram / OOP notes / final cleanup | ✅ Phase 7 |
+
+All screens now read the OOP views and RPCs. Before the final walkthrough,
+recreate the demo Auth rows and test on a copy of the Supabase project. The
+assessor-facing evidence is in
+[`OOP_NOTES.md`](OOP_NOTES.md) and [`CLASS_DIAGRAM.md`](CLASS_DIAGRAM.md).

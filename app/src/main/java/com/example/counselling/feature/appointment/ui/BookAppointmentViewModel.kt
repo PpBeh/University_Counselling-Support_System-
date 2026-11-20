@@ -2,21 +2,21 @@
 // Booking + Unique Feature 1 (Smart Counsellor Match).
 package com.example.counselling.feature.appointment.ui
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.counselling.core.AppConstants
-import com.example.counselling.core.MessageKind
 import com.example.counselling.core.SessionManager
-import com.example.counselling.core.UiMessage
-import com.example.counselling.feature.appointment.data.AppointmentRepository
-import com.example.counselling.feature.appointment.model.CounsellorMatch
-import kotlinx.coroutines.channels.Channel
+import com.example.counselling.core.domain.ConcernCategory
+import com.example.counselling.core.domain.DomainException
+import com.example.counselling.core.domain.SessionMode
+import com.example.counselling.core.domain.Student
+import com.example.counselling.core.ui.BaseViewModel
+import com.example.counselling.feature.appointment.domain.AppointmentRepository
+import com.example.counselling.feature.appointment.domain.CounsellorMatch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -41,21 +41,21 @@ data class BookAppointmentUiState(
     val isBooking: Boolean = false,
 )
 
+// OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
+
 class BookAppointmentViewModel(
     private val repository: AppointmentRepository,
     sessionManager: SessionManager,
     initialConcern: String?,
-) : ViewModel() {
+) : BaseViewModel() {
 
-    private val preferredMode = sessionManager.currentProfile?.preferredSessionMode
-        ?.takeIf { it in listOf("in_person", "online") }
-        ?: "in_person"
+    private val preferredMode = (sessionManager.currentUser as? Student)
+        ?.preferredMode
+        ?.code
+        ?: SessionMode.IN_PERSON.code
 
     private val _uiState = MutableStateFlow(BookAppointmentUiState(mode = preferredMode))
     val uiState: StateFlow<BookAppointmentUiState> = _uiState.asStateFlow()
-
-    private val _messages = Channel<UiMessage>(Channel.BUFFERED)
-    val messages = _messages.receiveAsFlow()
 
     init {
         if (initialConcern != null && initialConcern in AppConstants.concernCategories) {
@@ -133,7 +133,13 @@ class BookAppointmentViewModel(
         val match = state.selectedMatch
 
         if (slotId == null || concern == null || match == null) {
-            _messages.trySend(UiMessage("Please choose a time slot.", MessageKind.ERROR))
+            postError("Please choose a time slot.")
+            return
+        }
+        val concernCategory = ConcernCategory.fromWire(concern)
+        val mode = SessionMode.fromWire(state.mode)
+        if (concernCategory == null || mode == null) {
+            postError("Please choose a valid concern and session mode.")
             return
         }
         if (state.note.length > 1000) {
@@ -146,35 +152,26 @@ class BookAppointmentViewModel(
             _uiState.update { it.copy(isBooking = true) }
             val result = repository.bookAppointment(
                 slotId = slotId,
-                mode = state.mode,
-                concernCategory = concern,
+                mode = mode,
+                concern = concernCategory,
                 note = state.note.takeIf { it.isNotBlank() },
             )
             _uiState.update { it.copy(isBooking = false) }
             result.onSuccess {
                 _uiState.update { it.copy(step = BookingStep.SUCCESS) }
-                _messages.send(
-                    UiMessage(
-                        "Appointment requested with ${match.counsellorName}.",
-                        MessageKind.SUCCESS,
-                    ),
-                )
+                postSuccess("Appointment requested with ${match.counsellorName}.")
             }.onFailure { error ->
-                _messages.send(
-                    UiMessage(
-                        error.message ?: "Could not book the appointment.",
-                        MessageKind.ERROR,
-                    ),
-                )
+                postError(error.message ?: "Could not book the appointment.")
             }
         }
     }
 
     private fun loadMatches() {
         val concern = _uiState.value.concern ?: return
+        val category = ConcernCategory.fromWire(concern) ?: return
         viewModelScope.launch {
             _uiState.update { it.copy(isLoadingMatches = true, loadError = null) }
-            repository.getSmartMatches(concern)
+            repository.getSmartMatches(category)
                 .onSuccess { matches ->
                     _uiState.update {
                         it.copy(

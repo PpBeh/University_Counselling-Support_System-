@@ -28,9 +28,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.counselling.core.UserRole
-import com.example.counselling.feature.appointment.data.AppointmentRepository
-import com.example.counselling.feature.appointment.model.Appointment
+import com.example.counselling.core.domain.AppointmentStatus
+import com.example.counselling.core.domain.User
+import com.example.counselling.feature.appointment.domain.Appointment
+import com.example.counselling.feature.appointment.domain.AppointmentRepository
 import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.EmptyState
 import com.example.counselling.ui.components.ErrorState
@@ -40,6 +41,7 @@ import com.example.counselling.ui.components.LoadingShimmer
 @Composable
 fun AdminAppointmentsRoute(
     repository: AppointmentRepository,
+    viewer: User,
     onBack: () -> Unit,
 ) {
     val viewModel: AppointmentsViewModel = viewModel(
@@ -49,6 +51,7 @@ fun AdminAppointmentsRoute(
 
     AdminAppointmentsScreen(
         state = state,
+        viewer = viewer,
         onBack = onBack,
         onRefresh = viewModel::refresh,
         onRetry = viewModel::retry,
@@ -59,6 +62,7 @@ fun AdminAppointmentsRoute(
 @Composable
 private fun AdminAppointmentsScreen(
     state: AppointmentsUiState,
+    viewer: User,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
@@ -141,7 +145,7 @@ private fun AdminAppointmentsScreen(
                         items(appointments, key = { it.id }) { appointment ->
                             AppointmentCard(
                                 appointment = appointment,
-                                viewerRole = UserRole.ADMIN,
+                                viewer = viewer,
                             )
                         }
                     }
@@ -151,11 +155,11 @@ private fun AdminAppointmentsScreen(
     }
 }
 
-private fun String.toApiStatus(): String? = when (this) {
-    "Pending" -> "pending"
-    "Confirmed" -> "confirmed"
-    "Completed" -> "completed"
-    "No show" -> "no_show"
-    "Cancelled" -> "cancelled"
+private fun String.toApiStatus(): AppointmentStatus? = when (this) {
+    "Pending" -> AppointmentStatus.Pending
+    "Confirmed" -> AppointmentStatus.Confirmed
+    "Completed" -> AppointmentStatus.Completed
+    "No show" -> AppointmentStatus.NoShow
+    "Cancelled" -> AppointmentStatus.Cancelled
     else -> null
 }

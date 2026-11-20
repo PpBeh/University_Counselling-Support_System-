@@ -41,8 +41,8 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.AppConstants
-import com.example.counselling.feature.counsellor.data.CounsellorRepository
-import com.example.counselling.feature.counsellor.model.Counsellor
+import com.example.counselling.feature.counsellor.domain.CounsellorRepository
+import com.example.counselling.core.domain.Counsellor
 import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.EmptyState
@@ -103,11 +103,11 @@ private fun CounsellorListScreen(
             val query = state.query.trim()
             val matchesQuery = query.isBlank() ||
                 counsellor.fullName.contains(query, ignoreCase = true) ||
-                counsellor.email.contains(query, ignoreCase = true) ||
-                counsellor.specialisations.any { it.contains(query, ignoreCase = true) }
+                counsellor.email.value.contains(query, ignoreCase = true) ||
+                counsellor.specialisationLabels.any { it.contains(query, ignoreCase = true) }
             val matchesSpecialisation = state.specialisation == "All" ||
-                counsellor.specialisations.contains(state.specialisation)
-            val matchesWeek = !state.availableThisWeekOnly || counsellor.availableThisWeek
+                counsellor.specialisationLabels.contains(state.specialisation)
+            val matchesWeek = !state.availableThisWeekOnly || counsellor.availableThisWeek()
             matchesQuery && matchesSpecialisation && matchesWeek
         }
     }
@@ -264,7 +264,7 @@ private fun CounsellorRow(counsellor: Counsellor, onClick: () -> Unit) {
                     )
                     if (!counsellor.isActive) {
                         StatusChip(status = "inactive")
-                    } else if (counsellor.availableThisWeek) {
+                    } else if (counsellor.availableThisWeek()) {
                         Surface(
                             shape = MaterialTheme.shapes.small,
                             color = SuccessContainer,
@@ -279,21 +279,21 @@ private fun CounsellorRow(counsellor: Counsellor, onClick: () -> Unit) {
                     }
                 }
                 Text(
-                    text = counsellor.email,
+                    text = counsellor.email.value,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = counsellor.specialisations.joinToString(" · "),
+                    text = counsellor.specialisationLabels.joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 3.dp),
                 )
-                if (counsellor.userId == null) {
+                if (counsellor.authUserId == null) {
                     Text(
                         text = "Not linked to an Auth account yet",
                         style = MaterialTheme.typography.labelSmall,

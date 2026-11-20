@@ -2,32 +2,36 @@
 // Own-profile editing, password change and account deactivation.
 package com.example.counselling.feature.student.ui
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.counselling.core.AppConstants
-import com.example.counselling.core.MessageKind
-import com.example.counselling.core.DateTimeUtils
 import com.example.counselling.core.SessionManager
-import com.example.counselling.core.UiMessage
 import com.example.counselling.core.Validators
-import com.example.counselling.feature.appointment.data.AppointmentRepository
-import com.example.counselling.feature.auth.data.AuthRepository
-import com.example.counselling.feature.student.data.ProfileRepository
-import com.example.counselling.feature.student.model.Profile
-import kotlinx.coroutines.channels.Channel
+import com.example.counselling.core.domain.Administrator
+import com.example.counselling.core.domain.AppointmentStatus
+import com.example.counselling.core.domain.Counsellor
+import com.example.counselling.core.domain.DomainException
+import com.example.counselling.core.domain.Password
+import com.example.counselling.core.domain.PhoneNumber
+import com.example.counselling.core.domain.SessionMode
+import com.example.counselling.core.domain.Student
+import com.example.counselling.core.domain.User
+import com.example.counselling.core.ui.BaseViewModel
+import com.example.counselling.feature.appointment.domain.AppointmentRepository
+import com.example.counselling.feature.auth.domain.AuthRepository
+import com.example.counselling.feature.student.domain.StudentRepository
+import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class ProfileUiState(
     val fullName: String = "",
     val email: String = "",
-    val role: String = "student",
+    val roleLabel: String = "Student",
     val studentId: String = "",
     val programme: String = "",
     val phone: String = "",
@@ -44,23 +48,23 @@ data class ProfileUiState(
     val isChangingPassword: Boolean = false,
     val isDeactivating: Boolean = false,
     val showDeactivationDialog: Boolean = false,
-) {
-    val isStudent: Boolean get() = role == "student"
-}
+    val isStudent: Boolean = false,
+)
+
+// OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
 
 class ProfileViewModel(
     private val sessionManager: SessionManager,
-    private val profileRepository: ProfileRepository,
+    private val studentRepository: StudentRepository,
     private val authRepository: AuthRepository,
     private val appointmentRepository: AppointmentRepository,
-) : ViewModel() {
+) : BaseViewModel() {
 
-    private val profile: Profile? = sessionManager.currentProfile
-    private val _uiState = MutableStateFlow(profile.toUiState())
+    private val user: User? = sessionManager.currentUser
+    private val student: Student? = user as? Student
+
+    private val _uiState = MutableStateFlow(user.toUiState())
     val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
-
-    private val _messages = Channel<UiMessage>(Channel.BUFFERED)
-    val messages = _messages.receiveAsFlow()
 
     fun onFullNameChange(value: String) {
         _uiState.update { it.copy(fullName = value, fullNameError = null) }
@@ -126,38 +130,29 @@ class ProfileViewModel(
             )
         }
         if (listOf(nameError, programmeError, phoneError, modeError).any { it != null }) return
-        if (!current.isStudent || current.isSavingProfile) return
-        val profileId = profile?.id ?: return
+        if (student == null || current.isSavingProfile) return
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSavingProfile = true) }
-            val result = profileRepository.updateStudentProfile(
-                userId = profileId,
-                fullName = current.fullName,
-                programme = current.programme,
-                phone = current.phone,
-                preferredMode = current.preferredMode,
-            )
+            val result = try {
+                studentRepository.updateProfile(
+                    userId = student.id,
+                    fullName = current.fullName,
+                    programme = current.programme,
+                    phone = PhoneNumber.of(current.phone),
+                    preferredMode = SessionMode.fromWire(current.preferredMode)
+                        ?: throw DomainException("Choose a preferred session mode."),
+                )
+            } catch (error: DomainException) {
+                Result.failure<Student>(error)
+            }
             _uiState.update { it.copy(isSavingProfile = false) }
             result.onSuccess { updated ->
                 sessionManager.refreshProfile()
-                _uiState.update {
-                    it.copy(
-                        fullName = updated.fullName,
-                        programme = updated.programme.orEmpty(),
-                        phone = updated.phone.orEmpty(),
-                        preferredMode = updated.preferredSessionMode
-                            ?: AppConstants.sessionModes.first(),
-                    )
-                }
-                _messages.send(UiMessage("Profile updated.", MessageKind.SUCCESS))
+                _uiState.update { it.fromStudent(updated) }
+                postSuccess("Profile updated.")
             }.onFailure {
-                _messages.send(
-                    UiMessage(
-                        it.message ?: "Could not update your profile.",
-                        MessageKind.ERROR,
-                    ),
-                )
+                postError(it.message ?: "Could not update your profile.")
             }
         }
     }
@@ -179,7 +174,11 @@ class ProfileViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isChangingPassword = true) }
-            val result = authRepository.updatePassword(current.newPassword)
+            val result = try {
+                authRepository.updatePassword(Password.of(current.newPassword))
+            } catch (error: DomainException) {
+                Result.failure<Unit>(error)
+            }
             _uiState.update {
                 it.copy(
                     isChangingPassword = false,
@@ -188,14 +187,9 @@ class ProfileViewModel(
                 )
             }
             result.onSuccess {
-                _messages.send(UiMessage("Password changed successfully.", MessageKind.SUCCESS))
+                postSuccess("Password changed successfully.")
             }.onFailure {
-                _messages.send(
-                    UiMessage(
-                        it.message ?: "Could not change your password.",
-                        MessageKind.ERROR,
-                    ),
-                )
+                postError(it.message ?: "Could not change your password.")
             }
         }
     }
@@ -204,26 +198,19 @@ class ProfileViewModel(
         if (_uiState.value.isDeactivating) return
         viewModelScope.launch {
             val appointments = appointmentRepository.getAppointments().getOrElse { error ->
-                _messages.send(
-                    UiMessage(
-                        error.message ?: "Could not check your upcoming appointments.",
-                        MessageKind.ERROR,
-                    ),
-                )
+                postError(error.message ?: "Could not check your upcoming appointments.")
                 return@launch
             }
+            val now = Instant.now()
             val upcoming = appointments.count {
-                it.status in listOf("pending", "confirmed") &&
-                    DateTimeUtils.isFuture(it.slotStart)
+                it.status in setOf(AppointmentStatus.Pending, AppointmentStatus.Confirmed) &&
+                    it.slot.start.isAfter(now)
             }
             if (upcoming > 0) {
-                _messages.send(
-                    UiMessage(
-                        "Cancel your $upcoming upcoming appointment" +
-                            (if (upcoming == 1) "" else "s") +
-                            " before deactivating your account.",
-                        MessageKind.ERROR,
-                    ),
+                postError(
+                    "Cancel your $upcoming upcoming appointment" +
+                        (if (upcoming == 1) "" else "s") +
+                        " before deactivating your account.",
                 )
             } else {
                 _uiState.update { it.copy(showDeactivationDialog = true) }
@@ -239,19 +226,14 @@ class ProfileViewModel(
         if (_uiState.value.isDeactivating) return
         viewModelScope.launch {
             _uiState.update { it.copy(isDeactivating = true) }
-            val result = profileRepository.deactivateAccount()
+            val result = studentRepository.deactivateAccount()
             _uiState.update { it.copy(isDeactivating = false) }
             result.onSuccess {
                 // Refreshing detects is_active = false, signs out and shows the
                 // deactivated message on the login screen.
                 sessionManager.refreshProfile()
             }.onFailure {
-                _messages.send(
-                    UiMessage(
-                        it.message ?: "Could not deactivate your account.",
-                        MessageKind.ERROR,
-                    ),
-                )
+                postError(it.message ?: "Could not deactivate your account.")
             }
         }
     }
@@ -259,14 +241,14 @@ class ProfileViewModel(
     companion object {
         fun factory(
             sessionManager: SessionManager,
-            profileRepository: ProfileRepository,
+            studentRepository: StudentRepository,
             authRepository: AuthRepository,
             appointmentRepository: AppointmentRepository,
         ) = viewModelFactory {
             initializer {
                 ProfileViewModel(
                     sessionManager,
-                    profileRepository,
+                    studentRepository,
                     authRepository,
                     appointmentRepository,
                 )
@@ -275,17 +257,31 @@ class ProfileViewModel(
     }
 }
 
-private fun Profile?.toUiState(): ProfileUiState {
-    if (this == null) {
-        return ProfileUiState()
-    }
+private fun User?.toUiState(): ProfileUiState {
+    if (this == null) return ProfileUiState()
     return ProfileUiState(
         fullName = fullName,
-        email = email,
-        role = role,
-        studentId = studentId.orEmpty(),
-        programme = programme.orEmpty(),
-        phone = phone.orEmpty(),
-        preferredMode = preferredSessionMode ?: AppConstants.sessionModes.first(),
+        email = email.value,
+        roleLabel = when (this) {
+            is Student -> "Student"
+            is Counsellor -> "Counsellor"
+            is Administrator -> "Administrator"
+        },
+        studentId = (this as? Student)?.studentId?.value.orEmpty(),
+        programme = (this as? Student)?.programme.orEmpty(),
+        phone = phone?.value.orEmpty(),
+        preferredMode = (this as? Student)?.preferredMode?.code
+            ?: AppConstants.sessionModes.first(),
+        isStudent = this is Student,
     )
 }
+
+private fun ProfileUiState.fromStudent(student: Student): ProfileUiState = copy(
+    fullName = student.fullName,
+    email = student.email.value,
+    studentId = student.studentId.value,
+    programme = student.programme,
+    phone = student.phone?.value.orEmpty(),
+    preferredMode = student.preferredMode.code,
+    isStudent = true,
+)

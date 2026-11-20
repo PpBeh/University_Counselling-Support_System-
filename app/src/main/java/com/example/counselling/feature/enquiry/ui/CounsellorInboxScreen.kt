@@ -39,9 +39,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.DateTimeUtils
-import com.example.counselling.feature.enquiry.data.EnquiryRepository
-import com.example.counselling.feature.enquiry.model.Enquiry
-import com.example.counselling.feature.resource.data.ResourceRepository
+import com.example.counselling.feature.enquiry.domain.Enquiry
+import com.example.counselling.feature.enquiry.domain.EnquiryRepository
+import com.example.counselling.feature.enquiry.domain.EnquiryStatus
+import com.example.counselling.feature.resource.domain.ResourceRepository
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.AppTopBar
@@ -98,7 +99,7 @@ private fun CounsellorInboxScreen(
         if (state.statusFilter == "All") {
             state.enquiries
         } else {
-            state.enquiries.filter { it.status == state.statusFilter.lowercase() }
+            state.enquiries.filter { it.status.code == state.statusFilter.lowercase() }
         }
     }
 
@@ -223,10 +224,10 @@ private fun InboxCard(
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
-                StatusChip(enquiry.status)
+                StatusChip(enquiry.status.label)
             }
             Text(
-                text = "${enquiry.referenceCode} · ${enquiry.category} · " +
+                text = "${enquiry.referenceCode} · ${enquiry.category.label} · " +
                     DateTimeUtils.formatDate(enquiry.createdAt),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -279,7 +280,7 @@ private fun ReplyDialog(
 ) {
     var reply by remember(enquiry.id) { mutableStateOf(enquiry.reply.orEmpty()) }
     var status by remember(enquiry.id) {
-        mutableStateOf(if (enquiry.status == "open") "answered" else enquiry.status)
+        mutableStateOf(if (enquiry.status == EnquiryStatus.OPEN) "answered" else enquiry.status.code)
     }
     var resourceLabel by remember(enquiry.id) {
         mutableStateOf(

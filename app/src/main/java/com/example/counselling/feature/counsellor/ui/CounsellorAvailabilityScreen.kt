@@ -48,8 +48,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.DateTimeUtils
-import com.example.counselling.feature.counsellor.data.CounsellorRepository
-import com.example.counselling.feature.counsellor.model.AvailabilitySlot
+import com.example.counselling.feature.counsellor.domain.CounsellorRepository
+import com.example.counselling.core.domain.AvailabilitySlot
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.ConfirmDialog
@@ -272,12 +272,12 @@ private fun SlotRow(
                     StatusChip(
                         status = when {
                             slot.isBooked -> "booked"
-                            slot.isPast -> "past"
+                            slot.isPast() -> "past"
                             else -> "free"
                         },
                     )
                 }
-                if (!slot.isEditable) {
+                if (!slot.isEditable()) {
                     Text(
                         text = if (slot.isBooked) {
                             "Linked to an appointment — cannot be edited or deleted."
@@ -290,7 +290,7 @@ private fun SlotRow(
                     )
                 }
             }
-            if (slot.isEditable) {
+            if (slot.isEditable()) {
                 IconButton(onClick = onEdit, enabled = !isDeleting) {
                     Icon(Icons.Outlined.Edit, contentDescription = "Edit slot")
                 }

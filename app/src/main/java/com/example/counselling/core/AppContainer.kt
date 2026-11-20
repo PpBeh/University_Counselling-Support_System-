@@ -1,17 +1,28 @@
 // Core | Owner: shared (Beh, Jeremy, Michael)
-// Simple manual dependency container. One instance is created by
-// CounsellingApp; ViewModels receive their repositories through a factory.
+// OOP: Composition root / manual dependency injection - this class is the only
+// place that constructs concrete Supabase repositories. ViewModels receive the
+// repository interfaces, so feature code never creates its own data source.
 package com.example.counselling.core
 
 import com.example.counselling.BuildConfig
-import com.example.counselling.feature.appointment.data.AppointmentRepository
-import com.example.counselling.feature.auth.data.AuthRepository
-import com.example.counselling.feature.counsellor.data.CounsellorRepository
-import com.example.counselling.feature.enquiry.data.EnquiryRepository
-import com.example.counselling.feature.enquiry.data.FeedbackRepository
-import com.example.counselling.feature.records.data.SessionRecordRepository
-import com.example.counselling.feature.resource.data.ResourceRepository
-import com.example.counselling.feature.student.data.ProfileRepository
+import com.example.counselling.core.data.SupabaseUserRepository
+import com.example.counselling.core.domain.UserRepository
+import com.example.counselling.feature.appointment.data.SupabaseAppointmentRepository
+import com.example.counselling.feature.appointment.domain.AppointmentRepository
+import com.example.counselling.feature.auth.data.SupabaseAuthRepository
+import com.example.counselling.feature.auth.domain.AuthRepository
+import com.example.counselling.feature.counsellor.data.SupabaseCounsellorRepository
+import com.example.counselling.feature.counsellor.domain.CounsellorRepository
+import com.example.counselling.feature.enquiry.data.SupabaseEnquiryRepository
+import com.example.counselling.feature.enquiry.data.SupabaseFeedbackRepository
+import com.example.counselling.feature.enquiry.domain.EnquiryRepository
+import com.example.counselling.feature.enquiry.domain.FeedbackRepository
+import com.example.counselling.feature.records.data.SupabaseSessionRecordRepository
+import com.example.counselling.feature.records.domain.SessionRecordRepository
+import com.example.counselling.feature.resource.data.SupabaseResourceRepository
+import com.example.counselling.feature.resource.domain.ResourceRepository
+import com.example.counselling.feature.student.data.SupabaseStudentRepository
+import com.example.counselling.feature.student.domain.StudentRepository
 import io.github.jan.supabase.SupabaseClient
 
 class AppContainer {
@@ -20,7 +31,8 @@ class AppContainer {
 
     val supabase: SupabaseClient?
     val authRepository: AuthRepository?
-    val profileRepository: ProfileRepository?
+    val userRepository: UserRepository?
+    val studentRepository: StudentRepository?
     val appointmentRepository: AppointmentRepository?
     val counsellorRepository: CounsellorRepository?
     val recordRepository: SessionRecordRepository?
@@ -48,28 +60,32 @@ class AppContainer {
 
         if (configurationError == null) {
             val client = SupabaseProvider.createClient(url, key)
-            val auth = AuthRepository(client)
-            val profiles = ProfileRepository(client)
-            val appointments = AppointmentRepository(client)
-            val counsellors = CounsellorRepository(client)
-            val records = SessionRecordRepository(client, appointments)
-            val resources = ResourceRepository(client)
-            val enquiries = EnquiryRepository(client, resources)
-            val feedback = FeedbackRepository(client, appointments)
+            val auth = SupabaseAuthRepository(client)
+            val users = SupabaseUserRepository(client)
+            val students = SupabaseStudentRepository(client)
+            val appointments = SupabaseAppointmentRepository(client)
+            val counsellors = SupabaseCounsellorRepository(client)
+            val records = SupabaseSessionRecordRepository(client, appointments)
+            val resources = SupabaseResourceRepository(client)
+            val enquiries = SupabaseEnquiryRepository(client)
+            val feedback = SupabaseFeedbackRepository(client)
+
             supabase = client
             authRepository = auth
-            profileRepository = profiles
+            userRepository = users
+            studentRepository = students
             appointmentRepository = appointments
             counsellorRepository = counsellors
             recordRepository = records
             resourceRepository = resources
             enquiryRepository = enquiries
             feedbackRepository = feedback
-            sessionManager = SessionManager(auth, profiles)
+            sessionManager = SessionManager(auth, users)
         } else {
             supabase = null
             authRepository = null
-            profileRepository = null
+            userRepository = null
+            studentRepository = null
             appointmentRepository = null
             counsellorRepository = null
             recordRepository = null

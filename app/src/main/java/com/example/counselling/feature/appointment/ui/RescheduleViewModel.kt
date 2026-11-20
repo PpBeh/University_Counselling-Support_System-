@@ -3,21 +3,18 @@
 // their own confirmed sessions without that notice rule for an emergency.
 package com.example.counselling.feature.appointment.ui
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.example.counselling.core.DateTimeUtils
-import com.example.counselling.core.MessageKind
-import com.example.counselling.core.UiMessage
-import com.example.counselling.feature.appointment.data.AppointmentRepository
-import com.example.counselling.feature.appointment.model.Appointment
-import com.example.counselling.feature.appointment.model.AvailableSlotRow
-import kotlinx.coroutines.channels.Channel
+import com.example.counselling.core.domain.AppointmentStatus
+import com.example.counselling.core.ui.BaseViewModel
+import com.example.counselling.feature.appointment.domain.Appointment
+import com.example.counselling.feature.appointment.domain.AppointmentRepository
+import com.example.counselling.feature.appointment.domain.AvailableSlot
+import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -25,24 +22,23 @@ data class RescheduleUiState(
     val isLoading: Boolean = true,
     val error: String? = null,
     val appointment: Appointment? = null,
-    val slots: List<AvailableSlotRow> = emptyList(),
+    val slots: List<AvailableSlot> = emptyList(),
     val selectedSlotId: String? = null,
     val tooLateToChange: Boolean = false,
     val isSubmitting: Boolean = false,
     val success: Boolean = false,
 )
 
+// OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
+
 class RescheduleViewModel(
     private val appointmentId: String,
     private val repository: AppointmentRepository,
     private val isCounsellor: Boolean,
-) : ViewModel() {
+) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(RescheduleUiState())
     val uiState: StateFlow<RescheduleUiState> = _uiState.asStateFlow()
-
-    private val _messages = Channel<UiMessage>(Channel.BUFFERED)
-    val messages = _messages.receiveAsFlow()
 
     init {
         load()
@@ -70,19 +66,9 @@ class RescheduleViewModel(
             _uiState.update { it.copy(isSubmitting = false) }
             result.onSuccess {
                 _uiState.update { it.copy(success = true) }
-                _messages.send(
-                    UiMessage(
-                        if (isCounsellor) "Session rescheduled." else "Appointment rescheduled.",
-                        MessageKind.SUCCESS,
-                    ),
-                )
+                postSuccess(if (isCounsellor) "Session rescheduled." else "Appointment rescheduled.")
             }.onFailure { error ->
-                _messages.send(
-                    UiMessage(
-                        error.message ?: "Could not reschedule the appointment.",
-                        MessageKind.ERROR,
-                    ),
-                )
+                postError(error.message ?: "Could not reschedule the appointment.")
             }
         }
     }
@@ -99,42 +85,34 @@ class RescheduleViewModel(
                 return@launch
             }
 
-            if (isCounsellor) {
-                if (appointment.status != "confirmed") {
-                    _uiState.value = RescheduleUiState(
-                        isLoading = false,
-                        appointment = appointment,
-                        tooLateToChange = true,
-                        error = "Only confirmed sessions can be rescheduled by the counsellor.",
-                    )
-                    return@launch
+            val actor = if (isCounsellor) appointment.counsellor else appointment.student
+            val now = Instant.now()
+            val allowed = appointment.canBeRescheduledBy(actor, now)
+            if (!allowed) {
+                val message = when {
+                    isCounsellor && appointment.status != AppointmentStatus.Confirmed ->
+                        "Only confirmed sessions can be rescheduled by the counsellor."
+                    isCounsellor ->
+                        "This session has already started and cannot be rescheduled."
+                    appointment.status !in setOf(AppointmentStatus.Pending, AppointmentStatus.Confirmed) ->
+                        "Only pending or confirmed appointments can be rescheduled."
+                    else ->
+                        "Appointments can only be rescheduled at least 12 hours before the session."
                 }
-            } else {
-                if (appointment.status !in listOf("pending", "confirmed")) {
-                    _uiState.value = RescheduleUiState(
-                        isLoading = false,
-                        appointment = appointment,
-                        tooLateToChange = true,
-                        error = "Only pending or confirmed appointments can be rescheduled.",
-                    )
-                    return@launch
-                }
-                if (!DateTimeUtils.canReschedule(appointment.slotStart)) {
-                    _uiState.value = RescheduleUiState(
-                        isLoading = false,
-                        appointment = appointment,
-                        tooLateToChange = true,
-                        error = "Appointments can only be rescheduled at least 12 hours before the session.",
-                    )
-                    return@launch
-                }
+                _uiState.value = RescheduleUiState(
+                    isLoading = false,
+                    appointment = appointment,
+                    tooLateToChange = true,
+                    error = message,
+                )
+                return@launch
             }
 
             repository.getAvailableSlots()
                 .onSuccess { allSlots ->
                     val ownSlots = allSlots
-                        .filter { it.counsellorId == appointment.counsellorId }
-                        .sortedBy { it.startAt }
+                        .filter { it.counsellorId == appointment.counsellor.id }
+                        .sortedBy { it.timeSlot.start }
                     _uiState.value = RescheduleUiState(
                         isLoading = false,
                         appointment = appointment,

@@ -28,8 +28,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.DateTimeUtils
-import com.example.counselling.feature.appointment.data.AppointmentRepository
-import com.example.counselling.feature.records.data.SessionRecordRepository
+import com.example.counselling.feature.appointment.domain.AppointmentRepository
+import com.example.counselling.feature.records.domain.SessionRecordRepository
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.AppTopBar

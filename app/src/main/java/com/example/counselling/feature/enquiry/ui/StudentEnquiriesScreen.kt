@@ -49,9 +49,10 @@ import com.example.counselling.core.AppConstants
 import com.example.counselling.core.DateTimeUtils
 import com.example.counselling.core.MessageKind
 import com.example.counselling.core.UiMessage
-import com.example.counselling.feature.enquiry.data.EnquiryRepository
-import com.example.counselling.feature.enquiry.model.Enquiry
-import com.example.counselling.feature.enquiry.model.EnquiryLookupRow
+import com.example.counselling.feature.enquiry.domain.Enquiry
+import com.example.counselling.feature.enquiry.domain.EnquiryLookup
+import com.example.counselling.feature.enquiry.domain.EnquiryRepository
+import com.example.counselling.feature.enquiry.domain.EnquiryStatus
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.AppTopBar
@@ -405,7 +406,7 @@ private fun LookupCard(
     onClear: () -> Unit,
     isLoading: Boolean,
     error: String?,
-    result: EnquiryLookupRow?,
+    result: EnquiryLookup?,
     onWithdraw: (String) -> Unit,
     onCopy: (String) -> Unit,
 ) {
@@ -468,7 +469,7 @@ private fun LookupCard(
 
 @Composable
 private fun LookupResultCard(
-    result: EnquiryLookupRow,
+    result: EnquiryLookup,
     onWithdraw: () -> Unit,
     onCopy: () -> Unit,
 ) {
@@ -483,10 +484,10 @@ private fun LookupResultCard(
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.weight(1f),
                 )
-                StatusChip(result.status)
+                StatusChip(result.status.label)
             }
             Text(
-                text = "${result.category} · ${DateTimeUtils.formatDate(result.createdAt)}",
+                text = "${result.category.label} · ${DateTimeUtils.formatDate(result.createdAt)}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 3.dp),
@@ -516,7 +517,7 @@ private fun LookupResultCard(
             }
             Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                 TextButton(onClick = onCopy) { Text("Copy code") }
-                if (result.status == "open") {
+                if (result.status == EnquiryStatus.OPEN) {
                     TextButton(onClick = onWithdraw) {
                         Text("Withdraw", color = MaterialTheme.colorScheme.error)
                     }
@@ -546,10 +547,10 @@ private fun LinkedEnquiryCard(
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.weight(1f),
                 )
-                StatusChip(enquiry.status)
+                StatusChip(enquiry.status.label)
             }
             Text(
-                text = "${enquiry.category} · ${DateTimeUtils.formatDate(enquiry.createdAt)}",
+                text = "${enquiry.category.label} · ${DateTimeUtils.formatDate(enquiry.createdAt)}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 3.dp),
@@ -582,7 +583,7 @@ private fun LinkedEnquiryCard(
             }
             Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                 TextButton(onClick = onCopy) { Text("Copy code") }
-                if (enquiry.status == "open") {
+                if (enquiry.status == EnquiryStatus.OPEN) {
                     TextButton(onClick = onWithdraw, enabled = !isBusy) {
                         Text("Withdraw", color = MaterialTheme.colorScheme.error)
                     }

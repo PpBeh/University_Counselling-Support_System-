@@ -1,16 +1,17 @@
 // Home | Owner: shared (Beh, Jeremy, Michael)
-// Appointment snapshot for every role and aggregate-only stats for admins.
+// Appointment snapshot for every signed-in User and aggregate-only stats for
+// administrators, selected through permissions rather than a role string.
 package com.example.counselling.feature.home.ui
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.example.counselling.core.UserRole
-import com.example.counselling.feature.appointment.data.AppointmentRepository
-import com.example.counselling.feature.appointment.model.Appointment
-import com.example.counselling.feature.records.data.SessionRecordRepository
-import com.example.counselling.feature.records.model.AdminDashboardStats
+import com.example.counselling.core.domain.User
+import com.example.counselling.core.ui.BaseViewModel
+import com.example.counselling.feature.appointment.domain.Appointment
+import com.example.counselling.feature.appointment.domain.AppointmentRepository
+import com.example.counselling.feature.records.domain.SessionRecordRepository
+import com.example.counselling.feature.records.domain.AdminDashboardStats
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,14 +27,16 @@ data class HomeUiState(
     val statsError: String? = null,
 )
 
+// OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
+
 class HomeViewModel(
-    private val role: UserRole,
+    private val user: User,
     private val appointmentRepository: AppointmentRepository,
     private val recordRepository: SessionRecordRepository,
-) : ViewModel() {
+) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(
-        HomeUiState(isLoadingStats = role == UserRole.ADMIN),
+        HomeUiState(isLoadingStats = user.permissions.canViewAllAppointments()),
     )
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
@@ -43,7 +46,7 @@ class HomeViewModel(
 
     fun refresh() {
         loadAppointments()
-        if (role == UserRole.ADMIN) loadAdminStats()
+        if (user.permissions.canViewAllAppointments()) loadAdminStats()
     }
 
     fun retryStats() = loadAdminStats()
@@ -100,12 +103,12 @@ class HomeViewModel(
 
     companion object {
         fun factory(
-            role: UserRole,
+            user: User,
             appointmentRepository: AppointmentRepository,
             recordRepository: SessionRecordRepository,
         ) = viewModelFactory {
             initializer {
-                HomeViewModel(role, appointmentRepository, recordRepository)
+                HomeViewModel(user, appointmentRepository, recordRepository)
             }
         }
     }

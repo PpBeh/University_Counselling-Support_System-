@@ -1,21 +1,20 @@
 // Module 1 / Team auth | Owner: Beh
-// Login uses the role returned by the database profile; the screen never asks
-// the user to choose a role.
+// Login restores the polymorphic User through SessionManager; the screen never
+// asks the user to choose a role.
 package com.example.counselling.feature.auth.ui
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.example.counselling.core.MessageKind
 import com.example.counselling.core.SessionManager
-import com.example.counselling.core.UiMessage
 import com.example.counselling.core.Validators
-import kotlinx.coroutines.channels.Channel
+import com.example.counselling.core.domain.DomainException
+import com.example.counselling.core.domain.Email
+import com.example.counselling.core.domain.Password
+import com.example.counselling.core.ui.BaseViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -27,15 +26,14 @@ data class LoginUiState(
     val isLoading: Boolean = false,
 )
 
+// OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
+
 class LoginViewModel(
     private val sessionManager: SessionManager,
-) : ViewModel() {
+) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
-
-    private val _messages = Channel<UiMessage>(Channel.BUFFERED)
-    val messages = _messages.receiveAsFlow()
 
     fun onEmailChange(value: String) {
         _uiState.update { it.copy(email = value, emailError = null) }
@@ -65,15 +63,17 @@ class LoginViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
-            val result = sessionManager.signIn(current.email, current.password)
+            val result = try {
+                sessionManager.signIn(
+                    Email.of(current.email),
+                    Password.of(current.password),
+                )
+            } catch (error: DomainException) {
+                Result.failure(error)
+            }
             _uiState.update { it.copy(isLoading = false) }
             result.onFailure { error ->
-                _messages.send(
-                    UiMessage(
-                        text = error.message ?: "Sign in failed. Please try again.",
-                        kind = MessageKind.ERROR,
-                    ),
-                )
+                postError(error.message ?: "Sign in failed. Please try again.")
             }
         }
     }

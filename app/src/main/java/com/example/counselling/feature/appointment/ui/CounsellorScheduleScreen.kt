@@ -37,9 +37,10 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.DateTimeUtils
-import com.example.counselling.core.UserRole
-import com.example.counselling.feature.appointment.data.AppointmentRepository
-import com.example.counselling.feature.appointment.model.Appointment
+import com.example.counselling.core.domain.AppointmentStatus
+import com.example.counselling.core.domain.User
+import com.example.counselling.feature.appointment.domain.Appointment
+import com.example.counselling.feature.appointment.domain.AppointmentRepository
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.ConfirmDialog
@@ -53,6 +54,7 @@ import com.example.counselling.ui.components.showAppMessage
 @Composable
 fun CounsellorScheduleRoute(
     repository: AppointmentRepository,
+    viewer: User,
     onManageAvailability: () -> Unit,
     onReschedule: (String) -> Unit,
 ) {
@@ -71,12 +73,13 @@ fun CounsellorScheduleRoute(
 
     CounsellorScheduleScreen(
         state = state,
+        viewer = viewer,
         snackbarHostState = snackbarState,
         onManageAvailability = onManageAvailability,
-        onConfirm = { id -> viewModel.updateStatus(id, "confirmed") },
+        onConfirm = { id -> viewModel.updateStatus(id, AppointmentStatus.Confirmed) },
         onDecline = viewModel::declineBooking,
-        onComplete = { id -> viewModel.updateStatus(id, "completed") },
-        onNoShow = { id -> viewModel.updateStatus(id, "no_show") },
+        onComplete = { id -> viewModel.updateStatus(id, AppointmentStatus.Completed) },
+        onNoShow = { id -> viewModel.updateStatus(id, AppointmentStatus.NoShow) },
         onCancelSession = viewModel::cancelConfirmedSession,
         onReschedule = onReschedule,
         onRefresh = viewModel::refresh,
@@ -88,6 +91,7 @@ fun CounsellorScheduleRoute(
 @Composable
 private fun CounsellorScheduleScreen(
     state: AppointmentsUiState,
+    viewer: User,
     snackbarHostState: SnackbarHostState,
     onManageAvailability: () -> Unit,
     onConfirm: (String) -> Unit,
@@ -120,7 +124,7 @@ private fun CounsellorScheduleScreen(
         } ?: byTime
         filtered.sortedWith(
             compareBy<Appointment> {
-                if (it.status in listOf("pending", "confirmed")) 0 else 1
+                if (it.status in setOf(AppointmentStatus.Pending, AppointmentStatus.Confirmed)) 0 else 1
             }.thenBy { it.slotStart },
         )
     }
@@ -209,35 +213,35 @@ private fun CounsellorScheduleScreen(
                             items(appointments, key = { it.id }) { appointment ->
                                 AppointmentCard(
                                     appointment = appointment,
-                                    viewerRole = UserRole.COUNSELLOR,
+                                    viewer = viewer,
                                     isBusy = state.isMutating,
-                                    onConfirm = if (appointment.status == "pending") {
+                                    onConfirm = if (appointment.status == AppointmentStatus.Pending) {
                                         { onConfirm(appointment.id) }
                                     } else {
                                         null
                                     },
-                                    onDecline = if (appointment.status == "pending") {
+                                    onDecline = if (appointment.status == AppointmentStatus.Pending) {
                                         { pendingDecline = appointment }
                                     } else {
                                         null
                                     },
-                                    onReschedule = if (appointment.status == "confirmed") {
+                                    onReschedule = if (appointment.status == AppointmentStatus.Confirmed) {
                                         { onReschedule(appointment.id) }
                                     } else {
                                         null
                                     },
-                                    onCancel = if (appointment.status == "confirmed") {
+                                    onCancel = if (appointment.status == AppointmentStatus.Confirmed) {
                                         { pendingCancel = appointment }
                                     } else {
                                         null
                                     },
                                     cancelLabel = "Cancel session",
-                                    onComplete = if (appointment.status == "confirmed") {
+                                    onComplete = if (appointment.status == AppointmentStatus.Confirmed) {
                                         { onComplete(appointment.id) }
                                     } else {
                                         null
                                     },
-                                    onNoShow = if (appointment.status == "confirmed") {
+                                    onNoShow = if (appointment.status == AppointmentStatus.Confirmed) {
                                         { pendingNoShow = appointment }
                                     } else {
                                         null
@@ -290,11 +294,11 @@ private fun CounsellorScheduleScreen(
     }
 }
 
-private fun String.toApiStatus(): String? = when (this) {
-    "Pending" -> "pending"
-    "Confirmed" -> "confirmed"
-    "Completed" -> "completed"
-    "No show" -> "no_show"
-    "Cancelled" -> "cancelled"
+private fun String.toApiStatus(): AppointmentStatus? = when (this) {
+    "Pending" -> AppointmentStatus.Pending
+    "Confirmed" -> AppointmentStatus.Confirmed
+    "Completed" -> AppointmentStatus.Completed
+    "No show" -> AppointmentStatus.NoShow
+    "Cancelled" -> AppointmentStatus.Cancelled
     else -> null
 }

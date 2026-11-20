@@ -43,9 +43,10 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.DateTimeUtils
-import com.example.counselling.core.UserRole
-import com.example.counselling.feature.appointment.data.AppointmentRepository
-import com.example.counselling.feature.appointment.model.Appointment
+import com.example.counselling.core.domain.AppointmentStatus
+import com.example.counselling.core.domain.User
+import com.example.counselling.feature.appointment.domain.Appointment
+import com.example.counselling.feature.appointment.domain.AppointmentRepository
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.ConfirmDialog
@@ -65,6 +66,7 @@ private enum class StudentAppointmentTab(val label: String) {
 @Composable
 fun StudentAppointmentsRoute(
     repository: AppointmentRepository,
+    viewer: User,
     onBook: () -> Unit,
     onReschedule: (String) -> Unit,
     onOpenSummaries: () -> Unit,
@@ -87,6 +89,7 @@ fun StudentAppointmentsRoute(
 
     StudentAppointmentsScreen(
         state = state,
+        viewer = viewer,
         snackbarHostState = snackbarState,
         onBook = onBook,
         onReschedule = onReschedule,
@@ -102,6 +105,7 @@ fun StudentAppointmentsRoute(
 @Composable
 private fun StudentAppointmentsScreen(
     state: AppointmentsUiState,
+    viewer: User,
     snackbarHostState: SnackbarHostState,
     onBook: () -> Unit,
     onReschedule: (String) -> Unit,
@@ -131,15 +135,15 @@ private fun StudentAppointmentsScreen(
     val appointments = remember(state.appointments, selectedTab, selectedStatusLabel) {
         val tabRows = when (selectedTab) {
             StudentAppointmentTab.UPCOMING -> state.appointments.filter {
-                it.status in listOf("pending", "confirmed")
+                it.status in setOf(AppointmentStatus.Pending, AppointmentStatus.Confirmed)
             }.sortedBy { it.slotStart }
 
             StudentAppointmentTab.PAST -> state.appointments.filter {
-                it.status in listOf("completed", "no_show")
+                it.status in setOf(AppointmentStatus.Completed, AppointmentStatus.NoShow)
             }.sortedByDescending { it.slotStart }
 
             StudentAppointmentTab.CANCELLED -> state.appointments.filter {
-                it.status == "cancelled"
+                it.status == AppointmentStatus.Cancelled
             }.sortedByDescending { it.slotStart }
         }
         val status = selectedStatusLabel.toApiStatus()
@@ -269,10 +273,13 @@ private fun StudentAppointmentsScreen(
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             items(appointments, key = { it.id }) { appointment ->
-                                val canChange = appointment.status in listOf("pending", "confirmed")
+                                val canChange = appointment.status in setOf(
+                                    AppointmentStatus.Pending,
+                                    AppointmentStatus.Confirmed,
+                                )
                                 AppointmentCard(
                                     appointment = appointment,
-                                    viewerRole = UserRole.STUDENT,
+                                    viewer = viewer,
                                     isBusy = state.isMutating,
                                     onReschedule = if (
                                         canChange &&
@@ -287,7 +294,7 @@ private fun StudentAppointmentsScreen(
                                     } else {
                                         null
                                     },
-                                    onFeedback = if (appointment.status == "completed") {
+                                    onFeedback = if (appointment.status == AppointmentStatus.Completed) {
                                         onOpenFeedback
                                     } else {
                                         null
@@ -320,11 +327,11 @@ private fun StudentAppointmentsScreen(
     }
 }
 
-private fun String.toApiStatus(): String? = when (this) {
-    "Pending" -> "pending"
-    "Confirmed" -> "confirmed"
-    "Completed" -> "completed"
-    "No show" -> "no_show"
-    "Cancelled" -> "cancelled"
+private fun String.toApiStatus(): AppointmentStatus? = when (this) {
+    "Pending" -> AppointmentStatus.Pending
+    "Confirmed" -> AppointmentStatus.Confirmed
+    "Completed" -> AppointmentStatus.Completed
+    "No show" -> AppointmentStatus.NoShow
+    "Cancelled" -> AppointmentStatus.Cancelled
     else -> null
 }

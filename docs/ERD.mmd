@@ -1,120 +1,230 @@
-erDiagram
-    %% University Counselling Appointment & Support System
-    %% Supabase-managed auth.users is shown because profiles/counsellors reference it.
-    %% Views (available_slots_view, student_session_summaries) are query helpers,
-    %% not independent entities, so they are omitted from the entity diagram.
+%% ============================================================================
+%% University Counselling Appointment & Support System
+%% OOP schema ERD (Class-Table Inheritance + associations)
+%% Owner: shared backend
+%%
+%% This is the physical data model. It is also the reverse-engineered view of
+%% docs/CLASS_DIAGRAM.mmd (the Kotlin class diagram is the object view).
+%% `users`, `resources` and `enquiries` are supertype tables; their subtype
+%% tables share the primary key with the supertype.
+%% ============================================================================
 
+erDiagram
+
+    AUTH_USERS ||--o| users : "links account"
     AUTH_USERS {
         uuid id PK
         text email
     }
 
-    PROFILES {
+    users ||--o| students : "is a"
+    users ||--o| counsellors : "is a"
+    users ||--o| administrators : "is a"
+
+    users {
         uuid id PK
+        uuid auth_user_id UK
         text email UK
-        text role
         text full_name
+        text phone
+        boolean is_active
+        text user_type
+    }
+
+    students {
+        uuid user_id PK,FK
+        text user_type
         text student_id UK
         text programme
-        text phone
-        text preferred_session_mode
-        boolean is_active
+        text preferred_session_mode FK
     }
 
-    ADMIN_WHITELIST {
-        bigint id PK
-        text email UK
-        timestamptz created_at
-    }
-
-    COUNSELLORS {
-        uuid id PK
-        uuid user_id FK,UK
-        text full_name
-        text email UK
-        text_array specialisations
-        text_array languages
+    counsellors {
+        uuid user_id PK,FK
+        text user_type
         text bio
-        boolean is_active
     }
 
-    AVAILABILITY_SLOTS {
+    administrators {
+        uuid user_id PK,FK
+        text user_type
+    }
+
+    session_modes ||--o{ students : "preferred"
+    session_modes ||--o{ appointments : "mode"
+
+    concern_categories ||--o{ counsellor_specialisations : "category"
+    counsellors ||--o{ counsellor_specialisations : "has"
+    counsellor_specialisations {
+        uuid counsellor_id PK,FK
+        text category_code PK,FK
+    }
+
+    languages ||--o{ counsellor_languages : "language"
+    counsellors ||--o{ counsellor_languages : "speaks"
+    counsellor_languages {
+        uuid counsellor_id PK,FK
+        smallint language_id PK,FK
+    }
+
+    counsellors ||--o{ availability_slots : "publishes"
+    availability_slots {
         uuid id PK
         uuid counsellor_id FK
         timestamptz start_at
         timestamptz end_at
     }
 
-    APPOINTMENTS {
+    students ||--o{ appointments : "books"
+    counsellors ||--o{ appointments : "assigned"
+    availability_slots ||--o{ appointments : "holds"
+    appointments ||--o{ appointments : "follow_up_of"
+
+    appointments {
         uuid id PK
         uuid student_id FK
         uuid counsellor_id FK
         uuid slot_id FK
-        text mode
-        text concern_category
-        text note
-        text status
+        text mode_code FK
+        text concern_code FK
+        text status_code FK
         uuid follow_up_of FK
+        text note
     }
 
-    SESSION_RECORDS {
+    concern_categories ||--o{ appointments : "concern"
+    appointment_statuses ||--o{ appointments : "status"
+    appointment_statuses ||--o{ appointment_status_transitions : "from"
+    appointment_statuses ||--o{ appointment_status_transitions : "to"
+    appointment_status_transitions {
+        text from_status_code PK,FK
+        text to_status_code PK,FK
+    }
+
+    appointments ||--o| session_records : "has"
+    risk_levels ||--o{ session_records : "risk"
+    session_records {
         uuid id PK
-        uuid appointment_id FK,UK
+        uuid appointment_id UK,FK
         uuid counsellor_id FK
         uuid student_id FK
+        text risk_code FK
         text private_notes
         text public_summary
-        text risk_level
         boolean follow_up_needed
         timestamptz follow_up_due
         boolean is_archived
     }
 
-    RESOURCES {
+    appointments ||--o| feedback : "rated by"
+    students ||--o{ feedback : "writes"
+    counsellors ||--o{ feedback : "receives"
+    feedback {
+        uuid id PK
+        uuid appointment_id UK,FK
+        uuid student_id FK
+        uuid counsellor_id FK
+        int rating
+        text comment
+    }
+
+    resources ||--o| article_resources : "subtype"
+    resources ||--o| video_resources : "subtype"
+    resources ||--o| audio_resources : "subtype"
+    resources ||--o| pdf_resources : "subtype"
+    resources ||--o| hotline_resources : "subtype"
+
+    resources {
         uuid id PK
         text title UK
         text description
-        text category
-        text media_type
-        text content_url
-        text_array target_stress_brackets
+        text category_code FK
+        text resource_type
         boolean is_published
     }
 
-    ENQUIRIES {
+    concern_categories ||--o{ resources : "category"
+    stress_brackets ||--o{ resource_target_brackets : "bracket"
+    resources ||--o{ resource_target_brackets : "targets"
+    resource_target_brackets {
+        uuid resource_id PK,FK
+        text bracket_code PK,FK
+    }
+
+    article_resources {
+        uuid resource_id PK,FK
+        text content_url
+    }
+    video_resources {
+        uuid resource_id PK,FK
+        text content_url
+    }
+    audio_resources {
+        uuid resource_id PK,FK
+        text content_url
+    }
+    pdf_resources {
+        uuid resource_id PK,FK
+        text content_url
+    }
+    hotline_resources {
+        uuid resource_id PK,FK
+        text phone_number
+        text operating_hours
+        text website_url
+    }
+
+    enquiries ||--o| identified_enquiries : "subtype"
+    enquiries ||--o| anonymous_enquiries : "subtype"
+    resources ||--o{ enquiries : "recommended"
+    concern_categories ||--o{ enquiries : "category"
+
+    enquiries {
         uuid id PK
         text reference_code UK
-        uuid student_id FK
-        boolean is_anonymous
-        text category
+        text category_code FK
         text message
         text status
         text reply
         uuid recommended_resource_id FK
-        timestamptz replied_at
+        text enquiry_type
     }
 
-    FEEDBACK {
-        uuid id PK
-        uuid appointment_id FK,UK
+    identified_enquiries {
+        uuid enquiry_id PK,FK
         uuid student_id FK
-        uuid counsellor_id FK
-        integer rating
-        text comment
     }
 
-    AUTH_USERS ||--|| PROFILES : "has one app profile"
-    AUTH_USERS |o--o| COUNSELLORS : "may be linked"
-    COUNSELLORS ||--o{ AVAILABILITY_SLOTS : "offers"
-    PROFILES ||--o{ APPOINTMENTS : "books as student"
-    COUNSELLORS ||--o{ APPOINTMENTS : "serves"
-    AVAILABILITY_SLOTS ||--o{ APPOINTMENTS : "is reserved by"
-    APPOINTMENTS ||--o| SESSION_RECORDS : "has one record"
-    PROFILES ||--o{ SESSION_RECORDS : "is the student"
-    COUNSELLORS ||--o{ SESSION_RECORDS : "writes"
-    APPOINTMENTS |o--o{ APPOINTMENTS : "follow-up of"
-    PROFILES |o--o{ ENQUIRIES : "may submit"
-    RESOURCES |o--o{ ENQUIRIES : "is recommended in"
-    APPOINTMENTS ||--o| FEEDBACK : "receives one rating"
-    PROFILES ||--o{ FEEDBACK : "writes"
-    COUNSELLORS ||--o{ FEEDBACK : "receives"
+    anonymous_enquiries {
+        uuid enquiry_id PK,FK
+    }
+
+    concern_categories {
+        text code PK
+        text label UK
+        smallint sort_order
+    }
+    session_modes {
+        text code PK
+        text label UK
+    }
+    risk_levels {
+        text code PK
+        text label UK
+        smallint rank
+    }
+    stress_brackets {
+        text code PK
+        text label UK
+        smallint min_score
+        smallint max_score
+    }
+    appointment_statuses {
+        text code PK
+        text label UK
+        boolean is_terminal
+    }
+    languages {
+        smallint language_id PK
+        text name UK
+    }

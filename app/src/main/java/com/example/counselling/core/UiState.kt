@@ -1,5 +1,6 @@
 // Core | Owner: shared (Beh, Jeremy, Michael)
-// Small, shared presentation types: loading/error state and Snackbar messages.
+// OOP: Sum type - sealed UiState makes loading/success/error exhaustive, and
+// UiMessage gives every ViewModel one typed snackbar contract.
 package com.example.counselling.core
 
 sealed interface UiState<out T> {

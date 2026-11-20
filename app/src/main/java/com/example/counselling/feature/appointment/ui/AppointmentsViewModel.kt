@@ -3,19 +3,16 @@
 // appointment rows each role actually receives.
 package com.example.counselling.feature.appointment.ui
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.example.counselling.core.MessageKind
-import com.example.counselling.core.UiMessage
-import com.example.counselling.feature.appointment.data.AppointmentRepository
-import com.example.counselling.feature.appointment.model.Appointment
-import kotlinx.coroutines.channels.Channel
+import com.example.counselling.core.domain.AppointmentStatus
+import com.example.counselling.core.ui.BaseViewModel
+import com.example.counselling.feature.appointment.domain.Appointment
+import com.example.counselling.feature.appointment.domain.AppointmentRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -28,15 +25,14 @@ data class AppointmentsUiState(
     val error: String? = null,
 )
 
+// OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
+
 class AppointmentsViewModel(
     private val repository: AppointmentRepository,
-) : ViewModel() {
+) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(AppointmentsUiState())
     val uiState: StateFlow<AppointmentsUiState> = _uiState.asStateFlow()
-
-    private val _messages = Channel<UiMessage>(Channel.BUFFERED)
-    val messages = _messages.receiveAsFlow()
 
     init {
         load()
@@ -88,24 +84,25 @@ class AppointmentsViewModel(
     fun declineBooking(appointmentId: String) {
         if (_uiState.value.isMutating) return
         performMutation(appointmentId, "Booking declined and slot released.") {
-            repository.updateStatus(appointmentId, "cancelled")
+            repository.updateStatus(appointmentId, AppointmentStatus.Cancelled)
         }
     }
 
     fun cancelConfirmedSession(appointmentId: String) {
         if (_uiState.value.isMutating) return
         performMutation(appointmentId, "Session cancelled and slot released.") {
-            repository.updateStatus(appointmentId, "cancelled")
+            repository.updateStatus(appointmentId, AppointmentStatus.Cancelled)
         }
     }
 
-    fun updateStatus(appointmentId: String, newStatus: String) {
+    fun updateStatus(appointmentId: String, newStatus: AppointmentStatus) {
         if (_uiState.value.isMutating) return
         val message = when (newStatus) {
-            "confirmed" -> "Appointment confirmed."
-            "completed" -> "Session marked as completed."
-            "no_show" -> "Session marked as no-show."
-            else -> "Appointment updated."
+            AppointmentStatus.Confirmed -> "Appointment confirmed."
+            AppointmentStatus.Completed -> "Session marked as completed."
+            AppointmentStatus.NoShow -> "Session marked as no-show."
+            AppointmentStatus.Cancelled -> "Appointment cancelled."
+            AppointmentStatus.Pending -> "Appointment updated."
         }
         performMutation(appointmentId, message) {
             repository.updateStatus(appointmentId, newStatus)
@@ -122,15 +119,10 @@ class AppointmentsViewModel(
             val result = action()
             _uiState.update { it.copy(isMutating = false, busyAppointmentId = null) }
             result.onSuccess {
-                _messages.send(UiMessage(successMessage, MessageKind.SUCCESS))
+                postSuccess(successMessage)
                 load()
             }.onFailure {
-                _messages.send(
-                    UiMessage(
-                        it.message ?: "Could not update the appointment.",
-                        MessageKind.ERROR,
-                    ),
-                )
+                postError(it.message ?: "Could not update the appointment.")
             }
         }
     }

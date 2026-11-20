@@ -47,11 +47,20 @@ object DateTimeUtils {
     fun formatDateTime(value: String?): String =
         parse(value)?.format(dateTimeFormatter) ?: "—"
 
+    fun formatDateTime(value: Instant?): String =
+        value?.atZone(kualaLumpur)?.format(dateTimeFormatter) ?: "—"
+
     fun formatDate(value: String?): String =
         parse(value)?.format(dateFormatter) ?: "—"
 
+    fun formatDate(value: Instant?): String =
+        value?.atZone(kualaLumpur)?.format(dateFormatter) ?: "—"
+
     fun formatTime(value: String?): String =
         parse(value)?.format(timeFormatter) ?: "—"
+
+    fun formatTime(value: Instant?): String =
+        value?.atZone(kualaLumpur)?.format(timeFormatter) ?: "—"
 
     /** Positive when the timestamp is still in the future. */
     fun hoursUntil(value: String?): Long {

@@ -3,24 +3,25 @@
 // the email in the counsellor directory or the admin whitelist.
 package com.example.counselling.feature.auth.ui
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.counselling.core.AppConstants
-import com.example.counselling.core.MessageKind
 import com.example.counselling.core.SessionManager
-import com.example.counselling.core.UiMessage
 import com.example.counselling.core.Validators
-import kotlinx.coroutines.channels.Channel
+import com.example.counselling.core.domain.DomainException
+import com.example.counselling.core.domain.Email
+import com.example.counselling.core.domain.Password
+import com.example.counselling.core.domain.PhoneNumber
+import com.example.counselling.core.domain.SessionMode
+import com.example.counselling.core.domain.StudentId
+import com.example.counselling.core.ui.BaseViewModel
+import com.example.counselling.feature.auth.domain.RegistrationDetails
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 
 data class RegisterUiState(
     val fullName: String = "",
@@ -43,15 +44,14 @@ data class RegisterUiState(
     val requiresEmailConfirmation: Boolean = false,
 )
 
+// OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
+
 class RegisterViewModel(
     private val sessionManager: SessionManager,
-) : ViewModel() {
+) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(RegisterUiState())
     val uiState: StateFlow<RegisterUiState> = _uiState.asStateFlow()
-
-    private val _messages = Channel<UiMessage>(Channel.BUFFERED)
-    val messages = _messages.receiveAsFlow()
 
     fun onFullNameChange(value: String) {
         _uiState.update { it.copy(fullName = value, fullNameError = null) }
@@ -148,41 +148,33 @@ class RegisterViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
-            val metadata = buildJsonObject {
-                put("full_name", state.fullName.trim())
-                put("student_id", state.studentId.trim())
-                put("programme", state.programme.trim())
-                put("phone", state.phone.trim())
-                put("preferred_session_mode", state.preferredMode)
+            val result = try {
+                sessionManager.signUp(
+                    RegistrationDetails(
+                        email = Email.of(state.email),
+                        password = Password.of(state.password),
+                        fullName = state.fullName.trim(),
+                        studentId = StudentId.of(state.studentId),
+                        programme = state.programme.trim(),
+                        phone = PhoneNumber.of(state.phone),
+                        preferredMode = SessionMode.fromWire(state.preferredMode)
+                            ?: throw DomainException("Choose a preferred session mode."),
+                    ),
+                )
+            } catch (error: DomainException) {
+                Result.failure<Boolean>(error)
             }
-            val result = sessionManager.signUp(
-                email = state.email,
-                password = state.password,
-                metadata = metadata,
-            )
             _uiState.update { it.copy(isLoading = false) }
 
             result.onSuccess { signedIn ->
                 if (signedIn) {
-                    _messages.send(
-                        UiMessage("Account created. Welcome to Counselling Support.", MessageKind.SUCCESS),
-                    )
+                    postSuccess("Account created. Welcome to Counselling Support.")
                 } else {
                     _uiState.update { it.copy(requiresEmailConfirmation = true) }
-                    _messages.send(
-                        UiMessage(
-                            "Account created. Confirm your email, then sign in.",
-                            MessageKind.SUCCESS,
-                        ),
-                    )
+                    postSuccess("Account created. Confirm your email, then sign in.")
                 }
             }.onFailure { error ->
-                _messages.send(
-                    UiMessage(
-                        error.message ?: "Registration failed. Please try again.",
-                        MessageKind.ERROR,
-                    ),
-                )
+                postError(error.message ?: "Registration failed. Please try again.")
             }
         }
     }

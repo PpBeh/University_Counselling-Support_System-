@@ -3,6 +3,14 @@
 **AMCS2194 Diploma Year 2 mini project**  
 A native Android counselling-service app with a Supabase (PostgreSQL + Auth + PostgREST) backend.
 
+> **OOP refactor: all six modules and all three unique features converted.**
+> The Supabase schema is the class-table-inheritance design described in
+> [`docs/ERD.mmd`](docs/ERD.mmd) and [`docs/DATA_DICTIONARY.md`](docs/DATA_DICTIONARY.md).
+> Beh, Jeremy and Michael features now use domain entities, repository
+> interfaces, DTO mappers and shared base infrastructure. Phase 7 covers the
+> final class diagram, OOP notes and cleanup. See
+> [`docs/SETUP_GUIDE.md`](docs/SETUP_GUIDE.md).
+
 The project includes all six required modules, three role-specific dashboards, and three unique features:
 
 1. **Smart Counsellor Match** — ranks counsellors by concern specialisation and earliest free slot.
@@ -13,16 +21,24 @@ The project includes all six required modules, three role-specific dashboards, a
 
 ## Important: demo account status
 
-The **Android code and backend schema are complete and the app builds successfully**. The current Supabase project's five demo Auth users were previously inserted directly into `auth.users`; their malformed rows cause a `500 Database error querying schema` when signing in. Unknown emails correctly return a normal `400 invalid_credentials`.
+The **OOP database schema and Android conversion are complete**. The remaining
+blocker is recreating the demo Auth accounts before the final role walkthrough.
 
-Deleting those users in the Dashboard is also blocked by restrictive appointment/record/feedback foreign keys, and creating a student in the Dashboard fails because the Auth trigger requires student metadata. The fix is:
+For a fresh project, use the new setup order:
 
-1. Run [`supabase/reset_demo_auth.sql`](supabase/reset_demo_auth.sql) (demo-only, destructive cleanup).
-2. Recreate admin/counsellors in **Authentication → Users**.
-3. Recreate the two students through the app's **Register** screen.
-4. Run `seed_demo.sql`.
+1. `supabase/schema.sql`
+2. `supabase/seed_reference.sql` (pre-provisions admin/counsellors)
+3. Create the five demo Auth users (staff link by email; students need metadata)
+4. `supabase/seed_demo.sql`
 
-Full steps: [SETUP_GUIDE §9.16](docs/SETUP_GUIDE.md). Never insert directly into `auth.users` with raw SQL. Until this is repaired, the app's login screen is reachable but role-specific end-to-end testing cannot use the demo accounts.
+For an existing project, test
+[`supabase/migrations/20261120_oop_refactor.sql`](supabase/migrations/20261120_oop_refactor.sql)
+on a **copy** first. The old tables are preserved in schema `legacy`; nothing is
+dropped.
+
+Full steps: [SETUP_GUIDE](docs/SETUP_GUIDE.md). Never insert directly into
+`auth.users` with raw SQL. The old `reset_demo_auth.sql` cleanup is only safe on
+the pre-OOP schema and must not be used after the OOP migration.
 
 ---
 
@@ -115,9 +131,9 @@ Reference enquiries: `ENQ-DEMO01`–`ENQ-DEMO04`.
 
 ---
 
-## Role navigation
+## Permission-driven navigation
 
-| Role | Bottom tabs |
+| Signed-in User | Bottom tabs |
 |---|---|
 | Student | Home · Appointments · Resources · Enquiries · Profile |
 | Counsellor | Home · Schedule · Records · Enquiries · Profile |
@@ -131,27 +147,41 @@ Secondary screens (booking, availability, record forms, resource form, self-chec
 
 ```text
 app/src/main/java/com/example/counselling/
-  core/                 configuration, Supabase client, session, validation, dates, errors
-  navigation/           routes, role destination sets, app graph
+  core/domain/          pure value objects, User hierarchy, AppointmentStatus,
+                        AvailabilitySlot, UserFactory, UserRepository
+  core/data/            BaseSupabaseRepository, ErrorTranslator, UserViewRow,
+                        SupabaseUserRepository
+  core/ui/              BaseViewModel with shared snackbar channel
+  core/                 AppContainer composition root, SessionManager, dates,
+                        validation, constants
+  navigation/           permission-driven destinations, routes, app graph
   ui/theme/             calm light/dark Material 3 theme
-  ui/components/        buttons, fields, dropdowns, date/time pickers, cards, badges, dialogs, snackbar
-  feature/auth/         login, registration, splash, configuration error
-  feature/home/         role dashboards, next appointment, admin aggregate stats
-  feature/student/      Module 1 profile, staff student directory
-  feature/appointment/  Module 2 booking, match, slots, student reschedule/cancel,
-                        counsellor decline/emergency cancel/reschedule, admin read-only view
-  feature/counsellor/   Module 3 directory and availability
-  feature/records/      Module 4 private records, triage, follow-up, student summaries
-  feature/resource/     Module 5 resource library and self-check
-  feature/enquiry/      Module 6 enquiries and feedback
+  ui/components/        buttons, fields, dropdowns, date/time pickers, cards,
+                        badges, dialogs, snackbar
+  feature/auth/         login/registration + AuthRepository domain/data
+  feature/home/         permission-driven dashboards, next appointment, admin stats
+  feature/student/      Module 1 profile/directory + StudentRepository domain/data
+  feature/appointment/  Module 2 Appointment entity, Smart Match strategy,
+                        booking/reschedule/status UI
+  feature/counsellor/   Module 3 CounsellorRepository + availability
+  feature/records/      Module 4 SessionRecord/TriageBoard/FollowUp + UI
+  feature/resource/     Module 5 Resource hierarchy, self-check, ResourceRepository
+  feature/enquiry/      Module 6 Enquiry hierarchy, feedback, repositories
 supabase/
-  schema.sql            complete backend definition
-  seed_reference.sql    reference data and slots
+  schema.sql            OOP class-table schema (fresh install)
+  seed_reference.sql    reference data, pre-provisioned staff, slots
   seed_demo.sql         demo records, appointments, enquiries, feedback
+  optional_drop_old_tables.sql
+  test_queries_oop_rls.sql
+  migrations/
+    20261120_oop_refactor.sql  non-destructive existing-project migration
 docs/
   SETUP_GUIDE.md        full setup, privacy proof and test plan
   DATA_DICTIONARY.md    schema reference
   ERD.mmd               Mermaid ERD
+  CLASS_DIAGRAM.md      final domain/persistence class diagrams
+  OOP_NOTES.md          assessor evidence map for every OOP construct
+  UPDATE_LOG.md         complete hand-off changelog for a teammate
   MODULE_NOTES.md       module implementation summary
   FINAL_CHECKLIST.md    final hand-off/submission checklist
 ```
@@ -161,23 +191,32 @@ docs/
 ## Verification
 
 - `:app:assembleDebug` — **BUILD SUCCESSFUL**
-- `:app:testDebugUnitTest` — **15/15 tests passed**
-  - validation rules
-  - Smart Counsellor Match ranking
-  - weekly availability generation/validation
+- `:app:testDebugUnitTest` — **54/54 tests passed**
+  - value objects, User hierarchy, UserFactory, AppointmentStatus
+  - Appointment entity reschedule/cancel rules
+  - Smart Counsellor Match strategy
+  - counsellor availability and weekly repeat rules
   - triage grouping
-  - self-check brackets and recommendations
+  - resource subtypes/draft validation and self-check recommendations
+  - identified/anonymous enquiry and feedback validation
 
-The setup guide also contains the SQL RLS proof queries, full CRUD test matrix and demo walkthrough.
+The setup guide also contains the SQL RLS proof queries, full CRUD test matrix
+and demo walkthrough. The assessor-facing OOP evidence is in
+[`docs/OOP_NOTES.md`](docs/OOP_NOTES.md) with the diagrams in
+[`docs/CLASS_DIAGRAM.md`](docs/CLASS_DIAGRAM.md).
 
 ---
 
 ## Security and privacy summary
 
-- Supabase Auth identifies the user; `profiles.role` drives role-based navigation.
+- Supabase Auth identifies the user; the session loads a polymorphic
+  `Student`/`Counsellor`/`Administrator`, and navigation/permissions are methods
+  on that object. UI code does not branch on a role string.
 - RLS restricts students, counsellors and admins to their permitted rows.
 - Appointments are mutated only through security-definer RPCs.
-- Session records are visible only to the owning counsellor; students read the safe summary view; admins see aggregate stats only.
-- Anonymous enquiries store `student_id = null`; lookup returns no identity.
+- Session records are visible only to the owning counsellor; students read the
+  safe `student_session_summaries` view; admins see aggregate stats only.
+- Anonymous enquiries are identified by an `anonymous_enquiries` subtype and
+  store no student identity; lookup returns no identity.
 - Resource drafts are hidden from students by RLS.
 - The publishable client key is safe to ship; a `service_role`/secret key must never be used in this app.

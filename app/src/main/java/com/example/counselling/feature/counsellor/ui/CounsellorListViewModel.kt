@@ -1,12 +1,12 @@
 // Module 3 | Owner: Jeremy
 package com.example.counselling.feature.counsellor.ui
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.example.counselling.feature.counsellor.data.CounsellorRepository
-import com.example.counselling.feature.counsellor.model.Counsellor
+import com.example.counselling.core.domain.Counsellor
+import com.example.counselling.core.ui.BaseViewModel
+import com.example.counselling.feature.counsellor.domain.CounsellorRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,9 +23,11 @@ data class CounsellorListUiState(
     val availableThisWeekOnly: Boolean = false,
 )
 
+// OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
+
 class CounsellorListViewModel(
     private val repository: CounsellorRepository,
-) : ViewModel() {
+) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(CounsellorListUiState())
     val uiState: StateFlow<CounsellorListUiState> = _uiState.asStateFlow()

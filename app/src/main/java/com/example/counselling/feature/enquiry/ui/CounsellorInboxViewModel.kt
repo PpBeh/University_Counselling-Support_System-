@@ -1,22 +1,19 @@
 // Module 6 | Owner: Michael
 package com.example.counselling.feature.enquiry.ui
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.counselling.core.AppConstants
-import com.example.counselling.core.MessageKind
-import com.example.counselling.core.UiMessage
-import com.example.counselling.feature.enquiry.data.EnquiryRepository
-import com.example.counselling.feature.enquiry.model.Enquiry
-import com.example.counselling.feature.resource.data.ResourceRepository
-import com.example.counselling.feature.resource.model.ResourceRow
-import kotlinx.coroutines.channels.Channel
+import com.example.counselling.core.ui.BaseViewModel
+import com.example.counselling.feature.enquiry.domain.Enquiry
+import com.example.counselling.feature.enquiry.domain.EnquiryRepository
+import com.example.counselling.feature.enquiry.domain.EnquiryStatus
+import com.example.counselling.feature.resource.domain.Resource
+import com.example.counselling.feature.resource.domain.ResourceRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -25,21 +22,20 @@ data class CounsellorInboxUiState(
     val isRefreshing: Boolean = false,
     val error: String? = null,
     val enquiries: List<Enquiry> = emptyList(),
-    val publishedResources: List<ResourceRow> = emptyList(),
+    val publishedResources: List<Resource> = emptyList(),
     val statusFilter: String = "All",
     val busyEnquiryId: String? = null,
 )
 
+// OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
+
 class CounsellorInboxViewModel(
     private val enquiryRepository: EnquiryRepository,
     private val resourceRepository: ResourceRepository,
-) : ViewModel() {
+) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(CounsellorInboxUiState())
     val uiState: StateFlow<CounsellorInboxUiState> = _uiState.asStateFlow()
-
-    private val _messages = Channel<UiMessage>(Channel.BUFFERED)
-    val messages = _messages.receiveAsFlow()
 
     init {
         load()
@@ -59,30 +55,27 @@ class CounsellorInboxViewModel(
     ) {
         if (_uiState.value.busyEnquiryId != null) return
         if (status !in AppConstants.enquiryStatuses) {
-            _messages.trySend(UiMessage("Choose a valid enquiry status.", MessageKind.ERROR))
+            postError("Choose a valid enquiry status.")
             return
         }
-        if (status == "answered" && reply.isBlank()) {
-            _messages.trySend(
-                UiMessage("Write a reply before marking the enquiry as answered.", MessageKind.ERROR),
-            )
+        val statusValue = EnquiryStatus.fromWire(status) ?: return
+        if (statusValue == EnquiryStatus.ANSWERED && reply.isBlank()) {
+            postError("Write a reply before marking the enquiry as answered.")
             return
         }
         if (reply.length > 2000) {
-            _messages.trySend(UiMessage("Reply must be 2,000 characters or fewer.", MessageKind.ERROR))
+            postError("Reply must be 2,000 characters or fewer.")
             return
         }
         viewModelScope.launch {
             _uiState.update { it.copy(busyEnquiryId = enquiry.id) }
-            enquiryRepository.reply(enquiry.id, reply, status, resourceId)
+            enquiryRepository.reply(enquiry.id, reply, statusValue, resourceId)
                 .onSuccess {
-                    _messages.send(UiMessage("Enquiry reply saved.", MessageKind.SUCCESS))
+                    postSuccess("Enquiry reply saved.")
                     load()
                 }
                 .onFailure {
-                    _messages.send(
-                        UiMessage(it.message ?: "Could not save the reply.", MessageKind.ERROR),
-                    )
+                    postError(it.message ?: "Could not save the reply.")
                 }
             _uiState.update { it.copy(busyEnquiryId = null) }
         }

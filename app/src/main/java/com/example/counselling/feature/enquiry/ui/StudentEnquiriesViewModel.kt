@@ -1,21 +1,20 @@
 // Module 6 | Owner: Michael
 package com.example.counselling.feature.enquiry.ui
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.counselling.core.AppConstants
-import com.example.counselling.core.MessageKind
-import com.example.counselling.core.UiMessage
-import com.example.counselling.feature.enquiry.data.EnquiryRepository
-import com.example.counselling.feature.enquiry.model.Enquiry
-import com.example.counselling.feature.enquiry.model.EnquiryLookupRow
-import kotlinx.coroutines.channels.Channel
+import com.example.counselling.core.domain.ConcernCategory
+import com.example.counselling.core.domain.DomainException
+import com.example.counselling.core.domain.ReferenceCode
+import com.example.counselling.core.ui.BaseViewModel
+import com.example.counselling.feature.enquiry.domain.Enquiry
+import com.example.counselling.feature.enquiry.domain.EnquiryLookup
+import com.example.counselling.feature.enquiry.domain.EnquiryRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -25,22 +24,21 @@ data class StudentEnquiriesUiState(
     val error: String? = null,
     val enquiries: List<Enquiry> = emptyList(),
     val lastReferenceCode: String? = null,
-    val lookupResult: EnquiryLookupRow? = null,
+    val lookupResult: EnquiryLookup? = null,
     val isLookingUp: Boolean = false,
     val lookupError: String? = null,
     val isSubmitting: Boolean = false,
     val busyEnquiryId: String? = null,
 )
 
+// OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
+
 class StudentEnquiriesViewModel(
     private val repository: EnquiryRepository,
-) : ViewModel() {
+) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(StudentEnquiriesUiState())
     val uiState: StateFlow<StudentEnquiriesUiState> = _uiState.asStateFlow()
-
-    private val _messages = Channel<UiMessage>(Channel.BUFFERED)
-    val messages = _messages.receiveAsFlow()
 
     init {
         load()
@@ -52,29 +50,24 @@ class StudentEnquiriesViewModel(
     fun submit(category: String, message: String, isAnonymous: Boolean) {
         if (_uiState.value.isSubmitting) return
         if (category !in AppConstants.concernCategories) {
-            _messages.trySend(UiMessage("Choose a concern category.", MessageKind.ERROR))
+            postError("Choose a concern category.")
             return
         }
         if (message.trim().length !in 10..1000) {
-            _messages.trySend(
-                UiMessage("Your message must be between 10 and 1,000 characters.", MessageKind.ERROR),
-            )
+            postError("Your message must be between 10 and 1,000 characters.")
             return
         }
+        val categoryValue = ConcernCategory.fromWire(category) ?: return
         viewModelScope.launch {
             _uiState.update { it.copy(isSubmitting = true) }
-            repository.submitEnquiry(category, message, isAnonymous)
+            repository.submitEnquiry(categoryValue, message, isAnonymous)
                 .onSuccess { code ->
                     _uiState.update { it.copy(lastReferenceCode = code) }
-                    _messages.send(
-                        UiMessage("Enquiry submitted. Keep your reference code.", MessageKind.SUCCESS),
-                    )
+                    postSuccess("Enquiry submitted. Keep your reference code.")
                     if (!isAnonymous) load(refresh = true)
                 }
                 .onFailure {
-                    _messages.send(
-                        UiMessage(it.message ?: "Could not submit the enquiry.", MessageKind.ERROR),
-                    )
+                    postError(it.message ?: "Could not submit the enquiry.")
                 }
             _uiState.update { it.copy(isSubmitting = false) }
         }
@@ -85,8 +78,9 @@ class StudentEnquiriesViewModel(
     }
 
     fun lookup(code: String) {
-        val normalized = code.trim().uppercase()
-        if (!Regex("^ENQ-[A-Z0-9]{6}$").matches(normalized)) {
+        val reference = try {
+            ReferenceCode.of(code)
+        } catch (_: DomainException) {
             _uiState.update {
                 it.copy(
                     lookupError = "Enter a valid reference code, for example ENQ-7K3P9Q.",
@@ -97,7 +91,7 @@ class StudentEnquiriesViewModel(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(isLookingUp = true, lookupError = null) }
-            repository.lookupByCode(normalized)
+            repository.lookupByCode(reference)
                 .onSuccess { result ->
                     _uiState.update {
                         it.copy(
@@ -128,17 +122,16 @@ class StudentEnquiriesViewModel(
     }
 
     fun withdrawByCode(code: String) {
+        val reference = runCatching { ReferenceCode.of(code) }.getOrNull() ?: return
         viewModelScope.launch {
-            repository.withdrawByCode(code)
+            repository.withdrawByCode(reference)
                 .onSuccess {
-                    _messages.send(UiMessage("Enquiry withdrawn.", MessageKind.SUCCESS))
+                    postSuccess("Enquiry withdrawn.")
                     _uiState.update { it.copy(lookupResult = null) }
                     load(refresh = true)
                 }
                 .onFailure {
-                    _messages.send(
-                        UiMessage(it.message ?: "Could not withdraw the enquiry.", MessageKind.ERROR),
-                    )
+                    postError(it.message ?: "Could not withdraw the enquiry.")
                 }
         }
     }
@@ -149,13 +142,11 @@ class StudentEnquiriesViewModel(
             _uiState.update { it.copy(busyEnquiryId = enquiry.id) }
             repository.deleteOwnLinkedEnquiry(enquiry.id)
                 .onSuccess {
-                    _messages.send(UiMessage("Enquiry withdrawn.", MessageKind.SUCCESS))
+                    postSuccess("Enquiry withdrawn.")
                     load(refresh = true)
                 }
                 .onFailure {
-                    _messages.send(
-                        UiMessage(it.message ?: "Could not withdraw the enquiry.", MessageKind.ERROR),
-                    )
+                    postError(it.message ?: "Could not withdraw the enquiry.")
                 }
             _uiState.update { it.copy(busyEnquiryId = null) }
         }

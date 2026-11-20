@@ -41,10 +41,10 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.DateTimeUtils
-import com.example.counselling.feature.appointment.data.AppointmentRepository
-import com.example.counselling.feature.appointment.model.Appointment
-import com.example.counselling.feature.enquiry.data.FeedbackRepository
-import com.example.counselling.feature.enquiry.model.FeedbackRow
+import com.example.counselling.feature.appointment.domain.AppointmentRepository
+import com.example.counselling.feature.appointment.domain.Appointment
+import com.example.counselling.feature.enquiry.domain.FeedbackRepository
+import com.example.counselling.feature.enquiry.domain.Feedback
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.AppTopBar
@@ -95,12 +95,12 @@ private fun StudentFeedbackScreen(
     snackbarHostState: SnackbarHostState,
     onBack: () -> Unit,
     onSubmit: (String, Int, String) -> Unit,
-    onDelete: (FeedbackRow) -> Unit,
+    onDelete: (Feedback) -> Unit,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
 ) {
     var ratingTarget by remember { mutableStateOf<Appointment?>(null) }
-    var deleteTarget by remember { mutableStateOf<FeedbackRow?>(null) }
+    var deleteTarget by remember { mutableStateOf<Feedback?>(null) }
     val feedbackByAppointment = remember(state.feedback) {
         state.feedback.associateBy { it.appointmentId }
     }
@@ -210,7 +210,7 @@ private fun StudentFeedbackScreen(
 @Composable
 private fun CompletedSessionCard(
     appointment: Appointment,
-    feedback: FeedbackRow?,
+    feedback: Feedback?,
     isBusy: Boolean,
     onRate: () -> Unit,
     onDelete: () -> Unit,
@@ -248,7 +248,7 @@ private fun CompletedSessionCard(
                 }
             } else {
                 Spacer(Modifier.height(6.dp))
-                StarRating(rating = feedback.rating, starSize = 24.dp)
+                StarRating(rating = feedback.rating.value, starSize = 24.dp)
                 if (!feedback.comment.isNullOrBlank()) {
                     Text(
                         text = feedback.comment,

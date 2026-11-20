@@ -38,7 +38,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.DateTimeUtils
-import com.example.counselling.feature.counsellor.data.CounsellorRepository
+import com.example.counselling.feature.counsellor.domain.CounsellorRepository
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.ConfirmDialog
@@ -152,7 +152,7 @@ private fun CounsellorDetailScreen(
                                 style = MaterialTheme.typography.headlineSmall,
                             )
                             Text(
-                                text = counsellor.email,
+                                text = counsellor.email.value,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -161,7 +161,7 @@ private fun CounsellorDetailScreen(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                             ) {
                                 StatusChip(if (counsellor.isActive) "active" else "inactive")
-                                StatusChip(if (counsellor.userId == null) "unlinked" else "linked")
+                                StatusChip(if (counsellor.authUserId == null) "unlinked" else "linked")
                             }
                         }
                     }
@@ -169,7 +169,7 @@ private fun CounsellorDetailScreen(
                     Spacer(Modifier.height(10.dp))
                     InfoCard(title = "Specialisations", icon = Icons.Outlined.Groups) {
                         Text(
-                            text = counsellor.specialisations.joinToString(" · "),
+                            text = counsellor.specialisationLabels.joinToString(" · "),
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
@@ -190,7 +190,7 @@ private fun CounsellorDetailScreen(
                     Spacer(Modifier.height(20.dp))
                     SectionHeader(title = "Upcoming free slots")
                     Spacer(Modifier.height(8.dp))
-                    if (counsellor.upcomingFreeSlots.isEmpty()) {
+                    if (counsellor.upcomingFreeSlots().isEmpty()) {
                         InfoCard(
                             title = "No free upcoming slots",
                             body = "Add availability so this counsellor can appear in Smart Match.",
@@ -199,7 +199,7 @@ private fun CounsellorDetailScreen(
                             onAction = onManageAvailability,
                         )
                     } else {
-                        counsellor.upcomingFreeSlots.take(8).forEach { slot ->
+                        counsellor.upcomingFreeSlots().take(8).forEach { slot ->
                             Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -216,9 +216,9 @@ private fun CounsellorDetailScreen(
                                 )
                             }
                         }
-                        if (counsellor.upcomingFreeSlots.size > 8) {
+                        if (counsellor.upcomingFreeSlots().size > 8) {
                             Text(
-                                text = "+${counsellor.upcomingFreeSlots.size - 8} more slots",
+                                text = "+${counsellor.upcomingFreeSlots().size - 8} more slots",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 4.dp),
