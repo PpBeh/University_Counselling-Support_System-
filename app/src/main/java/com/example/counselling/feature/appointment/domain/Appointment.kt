@@ -77,6 +77,7 @@ class Appointment(
             actor.id == student.id &&
             isFollowUp &&
             status == AppointmentStatus.Pending &&
+            lastEvent == "followup_requested" &&
             slot.start.isAfter(now)
 
     // OOP: Polymorphism - the card asks the appointment what the signed-in
@@ -96,7 +97,11 @@ class Appointment(
         }
         if (actor is Counsellor) {
             if (isFollowUp && status == AppointmentStatus.Pending) {
-                return "Waiting for the student to confirm the follow-up"
+                return if (lastEvent == "rescheduled_by_student") {
+                    "Student rescheduled the follow-up — reconfirm it"
+                } else {
+                    "Waiting for the student to confirm the follow-up"
+                }
             }
             if (status == AppointmentStatus.Pending && !isFollowUp) {
                 return if (lastEvent == "rescheduled_by_student") {
@@ -188,7 +193,11 @@ class Appointment(
         if (!status.canTransitionTo(nextStatus)) {
             throw DomainException("That appointment status change is not allowed.")
         }
-        if (nextStatus == AppointmentStatus.Confirmed && isFollowUp) {
+        if (
+            nextStatus == AppointmentStatus.Confirmed &&
+            isFollowUp &&
+            lastEvent != "rescheduled_by_student"
+        ) {
             throw DomainException("A proposed follow-up must be confirmed by the student.")
         }
         if (nextStatus == AppointmentStatus.Confirmed && !slot.start.isAfter(now)) {

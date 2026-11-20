@@ -291,7 +291,13 @@ private fun StudentAppointmentsScreen(
                             ),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            items(appointments, key = { it.id }) { appointment ->
+                            items(
+                                appointments,
+                                key = { appointment ->
+                                    val feedback = state.feedback[appointment.id]
+                                    "${appointment.uiKey()}:${feedback?.rating}:${feedback?.comment}"
+                                },
+                            ) { appointment ->
                                 val canChange = appointment.status in setOf(
                                     AppointmentStatus.Pending,
                                     AppointmentStatus.Confirmed,

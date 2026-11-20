@@ -225,6 +225,8 @@ Shared Supabase configuration is in tracked `supabase.properties` (publishable U
   is pending, carries `follow_up_of`, and appears to the student as a
   **Confirm your follow-up** card notice. The student confirms it through
   `confirm_followup_appointment`; the counsellor then sees a confirmation notice.
+- If the student reschedules a follow-up, it returns to pending with
+  `rescheduled_by_student`; the **counsellor** must reconfirm the new time.
 - Student max-active, overlap, race and slot rules still apply.
 
 ---
@@ -334,7 +336,7 @@ Shared Supabase configuration is in tracked `supabase.properties` (publishable U
 
 ## Verification notes
 
-- **57 local JVM tests** cover the domain value objects/User factory, Appointment State/entity rules, card notices, follow-up confirmation rules, Smart Match strategy, counsellor availability rules, triage grouping, resource subtypes/draft validation, self-check recommendations, and identified/anonymous enquiry/feedback validation.
+- **58 local JVM tests** cover the domain value objects/User factory, Appointment State/entity rules, card notices, follow-up confirmation rules, Smart Match strategy, counsellor availability rules, triage grouping, resource subtypes/draft validation, self-check recommendations, and identified/anonymous enquiry/feedback validation.
 - Final OOP evidence: [`OOP_NOTES.md`](OOP_NOTES.md) and
   [`CLASS_DIAGRAM.md`](CLASS_DIAGRAM.md).
 - `:app:assembleDebug` and `:app:testDebugUnitTest` are green as of the final build.

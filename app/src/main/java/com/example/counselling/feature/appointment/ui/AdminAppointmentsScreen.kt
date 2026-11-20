@@ -142,7 +142,7 @@ private fun AdminAppointmentsScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        items(appointments, key = { it.id }) { appointment ->
+                        items(appointments, key = { it.uiKey() }) { appointment ->
                             AppointmentCard(
                                 appointment = appointment,
                                 viewer = viewer,

@@ -385,7 +385,7 @@ Reference enquiry codes: `ENQ-DEMO01` – `ENQ-DEMO04`.
 
 ## 8. Verification already done
 
-- **57/57 JVM tests pass**
+- **58/58 JVM tests pass**
 - Android debug build: **BUILD SUCCESSFUL**
 - All domain packages free of Android/Supabase imports
 - No remaining `UserRole`, `Profile`, or legacy repository references
@@ -527,7 +527,7 @@ no longer required for normal appointment feedback.
 ### Verification after fixes
 
 - `:app:assembleDebug` — **BUILD SUCCESSFUL**
-- `:app:testDebugUnitTest` — **57/57 tests pass**
+- `:app:testDebugUnitTest` — **58/58 tests pass**
 - No database/migration changes required
 
 ---
@@ -573,6 +573,10 @@ The RPCs record the event:
 counsellor no longer confirms it. The student card shows **Confirm your
 follow-up** and calls the new `confirm_followup_appointment` RPC. The counsellor
 then sees the confirmation notice.
+
+If the **student reschedules a follow-up**, it returns to pending with
+`rescheduled_by_student`; this time the **counsellor** reconfirms it. The
+student confirmation RPC rejects this case so the workflow cannot go backwards.
 
 SQL changes added to [`schema.sql`](../supabase/schema.sql) and the migration:
 
@@ -620,6 +624,6 @@ Changed file:
 
 ### 14.7 Tests and build
 
-- `:app:testDebugUnitTest` — **57/57 tests pass**
+- `:app:testDebugUnitTest` — **58/58 tests pass**
 - `:app:assembleDebug` — **BUILD SUCCESSFUL**
 - Updated migration: [`20261120_oop_refactor.sql`](../supabase/migrations/20261120_oop_refactor.sql)

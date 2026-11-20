@@ -224,7 +224,13 @@ private fun CounsellorScheduleScreen(
                             ),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            items(appointments, key = { it.id }) { appointment ->
+                            items(
+                                appointments,
+                                key = { appointment ->
+                                    val feedback = state.feedback[appointment.id]
+                                    "${appointment.uiKey()}:${feedback?.rating}:${feedback?.comment}"
+                                },
+                            ) { appointment ->
                                 val feedback = state.feedback[appointment.id]
                                 AppointmentCard(
                                     appointment = appointment,
@@ -235,7 +241,10 @@ private fun CounsellorScheduleScreen(
                                     feedbackComment = feedback?.comment,
                                     onConfirm = if (
                                         appointment.status == AppointmentStatus.Pending &&
-                                        !appointment.isFollowUp
+                                        (
+                                            !appointment.isFollowUp ||
+                                                appointment.lastEvent == "rescheduled_by_student"
+                                            )
                                     ) {
                                         { onConfirm(appointment.id) }
                                     } else {

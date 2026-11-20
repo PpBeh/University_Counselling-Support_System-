@@ -141,6 +141,26 @@ class AppointmentEntityTest {
     }
 
     @Test
+    fun studentRescheduledFollowUpNeedsCounsellorReconfirmation() {
+        val rescheduled = appointment(
+            startHoursFromNow = 48,
+            status = AppointmentStatus.Pending,
+            followUpOf = "appointment-0",
+            lastEvent = "rescheduled_by_student",
+        )
+
+        assertFalse(rescheduled.canConfirmFollowUp(student, now))
+        assertEquals(
+            "Student rescheduled the follow-up — reconfirm it",
+            rescheduled.noticeFor(counsellor),
+        )
+        assertEquals(
+            AppointmentStatus.Confirmed,
+            rescheduled.withStatus(AppointmentStatus.Confirmed, now, counsellor).status,
+        )
+    }
+
+    @Test
     fun notices_distinguishConfirmationRescheduleAndCancellation() {
         assertEquals(
             "Your booking is confirmed",

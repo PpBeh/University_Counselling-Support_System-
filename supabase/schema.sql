@@ -1673,7 +1673,7 @@ begin
         raise exception 'Only an active counsellor can update appointment status.';
     end if;
 
-    select a.id, a.status_code, a.follow_up_of, s.start_at
+    select a.id, a.status_code, a.follow_up_of, a.last_event_code, s.start_at
     into v_appointment
     from public.appointments a
     join public.availability_slots s on s.id = a.slot_id
@@ -1692,7 +1692,9 @@ begin
         raise exception 'Counsellors can confirm or decline a pending booking, complete / mark no-show a confirmed booking, or cancel a confirmed session.';
     end if;
 
-    if v_new_status = 'confirmed' and v_appointment.follow_up_of is not null then
+    if v_new_status = 'confirmed'
+       and v_appointment.follow_up_of is not null
+       and v_appointment.last_event_code <> 'rescheduled_by_student' then
         raise exception 'A proposed follow-up must be confirmed by the student.';
     end if;
 
@@ -1957,7 +1959,7 @@ begin
         raise exception 'Please sign in again.';
     end if;
 
-    select a.id, a.status_code, a.follow_up_of, s.start_at
+    select a.id, a.status_code, a.follow_up_of, a.last_event_code, s.start_at
     into v_appointment
     from public.appointments a
     join public.availability_slots s on s.id = a.slot_id
@@ -1971,6 +1973,10 @@ begin
 
     if v_appointment.follow_up_of is null then
         raise exception 'Only a follow-up appointment can be confirmed here.';
+    end if;
+
+    if v_appointment.last_event_code <> 'followup_requested' then
+        raise exception 'This follow-up was rescheduled and must be reconfirmed by the counsellor.';
     end if;
 
     if v_appointment.status_code <> 'pending' then
