@@ -601,7 +601,24 @@ The counsellor schedule loads the safe `v_feedback` rows and shows the student's
 star rating and comment directly on completed appointment cards. Admin still sees
 aggregate stats only.
 
-### 14.6 Tests and build
+### 14.6 Admin availability planner redesign
+
+The availability manager is now efficient for admins managing many slots:
+
+- slots grouped by day;
+- Upcoming / This week / All filters (default Upcoming);
+- top-bar refresh;
+- full-screen editor instead of a cramped AlertDialog;
+- one-tap next-7-day date chips plus an "Other date" picker;
+- start-time chips (30-minute intervals);
+- duration presets (30 / 45 / 60 / 90 / 120 minutes);
+- automatic end time;
+- repeat weekly 1–8 weeks.
+
+Changed file:
+[`CounsellorAvailabilityScreen.kt`](../app/src/main/java/com/example/counselling/feature/counsellor/ui/CounsellorAvailabilityScreen.kt).
+
+### 14.7 Tests and build
 
 - `:app:testDebugUnitTest` — **57/57 tests pass**
 - `:app:assembleDebug` — **BUILD SUCCESSFUL**

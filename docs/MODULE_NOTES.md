@@ -143,6 +143,9 @@ Shared Supabase configuration is in tracked `supabase.properties` (publishable U
 - `CounsellorFormScreen`: add/edit directory details with specialisations, languages and bio.
 - `CounsellorDetailScreen`: linked Auth status, details, upcoming free slots, edit/manage availability/remove.
 - `CounsellorAvailabilityScreen` + `AvailabilityViewModel`: shared by counsellors (own slots) and admins (any counsellor).
+  - Slots grouped by day with Upcoming / This week / All filters.
+  - Full-screen add/edit planner with quick next-7-day dates, start-time chips, duration presets and automatic end time.
+  - Repeat weekly remains 1–8 weeks.
 - Counsellor Schedule links to **Manage my availability**.
 - Domain: `CounsellorRepository`, `CounsellorRemovalResult`,
   `WeeklyAvailabilityPattern`; `Counsellor` HAS-MANY `AvailabilitySlot`.
