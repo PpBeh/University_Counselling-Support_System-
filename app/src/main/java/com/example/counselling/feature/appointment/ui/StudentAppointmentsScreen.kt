@@ -89,7 +89,11 @@ fun StudentAppointmentsRoute(
         viewModel.messages.collect { snackbarState.showAppMessage(it) }
     }
 
-    // Returning from booking/reschedule should show the new state immediately.
+    // Returning from booking/reschedule should show the new state immediately,
+    // even if the previous destination was kept in the back stack.
+    LaunchedEffect(Unit) {
+        viewModel.load()
+    }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         viewModel.load()
     }

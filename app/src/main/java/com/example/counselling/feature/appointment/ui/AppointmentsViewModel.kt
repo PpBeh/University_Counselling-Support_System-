@@ -89,28 +89,88 @@ class AppointmentsViewModel(
 
     fun cancelAppointment(appointmentId: String) {
         if (_uiState.value.isMutating) return
-        performMutation(appointmentId, "Appointment cancelled.") {
+        performMutation(
+            appointmentId,
+            "Appointment cancelled.",
+            optimistic = { list ->
+                list.map {
+                    if (it.id == appointmentId) {
+                        it.withServerStatus(
+                            AppointmentStatus.Cancelled,
+                            "cancelled_by_student",
+                        )
+                    } else {
+                        it
+                    }
+                }
+            },
+        ) {
             repository.cancelAppointment(appointmentId)
         }
     }
 
     fun confirmFollowUp(appointmentId: String) {
         if (_uiState.value.isMutating) return
-        performMutation(appointmentId, "Follow-up confirmed.") {
+        performMutation(
+            appointmentId,
+            "Follow-up confirmed.",
+            optimistic = { list ->
+                list.map {
+                    if (it.id == appointmentId) {
+                        it.withServerStatus(
+                            AppointmentStatus.Confirmed,
+                            "followup_confirmed_by_student",
+                        )
+                    } else {
+                        it
+                    }
+                }
+            },
+        ) {
             repository.confirmFollowUp(appointmentId)
         }
     }
 
     fun declineBooking(appointmentId: String) {
         if (_uiState.value.isMutating) return
-        performMutation(appointmentId, "Booking declined and slot released.") {
+        performMutation(
+            appointmentId,
+            "Booking declined and slot released.",
+            optimistic = { list ->
+                list.map {
+                    if (it.id == appointmentId) {
+                        it.withServerStatus(
+                            AppointmentStatus.Cancelled,
+                            "cancelled_by_counsellor",
+                        )
+                    } else {
+                        it
+                    }
+                }
+            },
+        ) {
             repository.updateStatus(appointmentId, AppointmentStatus.Cancelled)
         }
     }
 
     fun cancelConfirmedSession(appointmentId: String) {
         if (_uiState.value.isMutating) return
-        performMutation(appointmentId, "Session cancelled and slot released.") {
+        performMutation(
+            appointmentId,
+            "Session cancelled and slot released.",
+            optimistic = { list ->
+                list.map {
+                    if (it.id == appointmentId) {
+                        it.withServerStatus(
+                            AppointmentStatus.Cancelled,
+                            "cancelled_by_counsellor",
+                        )
+                    } else {
+                        it
+                    }
+                }
+            },
+        ) {
             repository.updateStatus(appointmentId, AppointmentStatus.Cancelled)
         }
     }
@@ -124,7 +184,22 @@ class AppointmentsViewModel(
             AppointmentStatus.Cancelled -> "Appointment cancelled."
             AppointmentStatus.Pending -> "Appointment updated."
         }
-        performMutation(appointmentId, message) {
+        val event = when (newStatus) {
+            AppointmentStatus.Confirmed -> "confirmed"
+            AppointmentStatus.Completed -> "completed"
+            AppointmentStatus.NoShow -> "no_show"
+            AppointmentStatus.Cancelled -> "cancelled_by_counsellor"
+            AppointmentStatus.Pending -> "booked"
+        }
+        performMutation(
+            appointmentId,
+            message,
+            optimistic = { list ->
+                list.map {
+                    if (it.id == appointmentId) it.withServerStatus(newStatus, event) else it
+                }
+            },
+        ) {
             repository.updateStatus(appointmentId, newStatus)
         }
     }
@@ -191,6 +266,7 @@ class AppointmentsViewModel(
     private fun performMutation(
         appointmentId: String,
         successMessage: String,
+        optimistic: ((List<Appointment>) -> List<Appointment>)? = null,
         action: suspend () -> Result<Unit>,
     ) {
         viewModelScope.launch {
@@ -198,6 +274,11 @@ class AppointmentsViewModel(
             val result = action()
             _uiState.update { it.copy(isMutating = false, busyAppointmentId = null) }
             result.onSuccess {
+                if (optimistic != null) {
+                    _uiState.update { state ->
+                        state.copy(appointments = optimistic(state.appointments))
+                    }
+                }
                 postSuccess(successMessage)
                 load()
             }.onFailure {

@@ -545,7 +545,11 @@ status compared equal and Compose kept the old derived list.
 
 **Fix:** student, counsellor and admin appointment screens now derive the
 filtered list on each recomposition instead of remembering it by list equality.
-The student and counsellor top bars also have an explicit refresh button.
+Cards also use workflow-aware LazyColumn keys (status + last event + slot +
+feedback), so Compose cannot skip a status-only update. After a successful
+mutation the ViewModel applies the server-accepted status optimistically and
+then reloads. Reschedule returns automatically to the list. The student and
+counsellor top bars also have an explicit refresh button.
 
 ### 14.2 In-app notification badge on cards
 
@@ -577,6 +581,8 @@ then sees the confirmation notice.
 If the **student reschedules a follow-up**, it returns to pending with
 `rescheduled_by_student`; this time the **counsellor** reconfirms it. The
 student confirmation RPC rejects this case so the workflow cannot go backwards.
+The counsellor card shows “Student rescheduled the follow-up — reconfirm it”
+and exposes the Confirm action.
 
 SQL changes added to [`schema.sql`](../supabase/schema.sql) and the migration:
 

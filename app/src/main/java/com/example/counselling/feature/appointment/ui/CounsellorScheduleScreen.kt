@@ -72,6 +72,9 @@ fun CounsellorScheduleRoute(
     LaunchedEffect(Unit) {
         viewModel.messages.collect { snackbarState.showAppMessage(it) }
     }
+    LaunchedEffect(Unit) {
+        viewModel.load()
+    }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         viewModel.load()
     }

@@ -62,6 +62,14 @@ fun RescheduleRoute(
     LaunchedEffect(Unit) {
         viewModel.messages.collect { snackbarState.showAppMessage(it) }
     }
+    // Return to the appointment list automatically; that screen reloads on
+    // re-entry so the new slot/status is visible without a manual refresh.
+    LaunchedEffect(state.success) {
+        if (state.success) {
+            kotlinx.coroutines.delay(1_200)
+            onBack()
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {

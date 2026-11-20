@@ -209,10 +209,18 @@ class Appointment(
         return copy(status = nextStatus)
     }
 
+    // Used only after a successful server action to reflect the accepted state
+    // immediately while the fresh list loads.
+    fun withServerStatus(
+        nextStatus: AppointmentStatus,
+        event: String = lastEvent,
+    ): Appointment = copy(status = nextStatus, lastEvent = event)
+
     private fun copy(
         slot: TimeSlot = this.slot,
         slotId: String = this.slotId,
         status: AppointmentStatus = this.status,
+        lastEvent: String = this.lastEvent,
     ): Appointment = Appointment(
         id = id,
         student = student,
