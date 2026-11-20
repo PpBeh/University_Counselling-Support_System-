@@ -382,6 +382,7 @@ private fun MainApp(
             composable(Routes.COUNSELLOR_SCHEDULE) {
                 CounsellorScheduleRoute(
                     repository = appointmentRepository,
+                    feedbackRepository = feedbackRepository,
                     viewer = user,
                     onManageAvailability = {
                         navController.navigateOnce(Routes.MY_AVAILABILITY)

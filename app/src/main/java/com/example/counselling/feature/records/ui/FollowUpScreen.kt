@@ -18,7 +18,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Schedule
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
@@ -45,6 +44,8 @@ import com.example.counselling.ui.components.LoadingShimmer
 import com.example.counselling.ui.components.PrimaryButton
 import com.example.counselling.ui.components.SecondaryButton
 import com.example.counselling.ui.components.SectionHeader
+import com.example.counselling.ui.components.SessionSlotPicker
+import com.example.counselling.ui.components.TimeSlotChoice
 import com.example.counselling.ui.components.showAppMessage
 
 @Composable
@@ -65,7 +66,7 @@ fun FollowUpRoute(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            AppTopBar(title = "Schedule follow-up", onBack = onBack)
+            AppTopBar(title = "Propose follow-up", onBack = onBack)
 
             when {
                 state.isLoading -> LoadingShimmer(
@@ -100,13 +101,13 @@ fun FollowUpRoute(
                         }
                     }
                     Text(
-                        text = "Follow-up scheduled",
+                        text = "Follow-up proposed",
                         style = MaterialTheme.typography.headlineSmall,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(top = 18.dp),
                     )
                     Text(
-                        text = "The student will see a pending follow-up appointment with the Follow-up tag.",
+                        text = "The student will receive a pending follow-up request and must confirm it before the session is booked.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
@@ -118,7 +119,9 @@ fun FollowUpRoute(
 
                 else -> {
                     val record = checkNotNull(state.record)
-                    val grouped = state.slots.groupBy { DateTimeUtils.formatDate(it.startAt) }
+                    val choices = state.slots.map {
+                        TimeSlotChoice(it.slotId, it.startAt, it.endAt)
+                    }
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -141,44 +144,29 @@ fun FollowUpRoute(
                         Spacer(Modifier.height(16.dp))
                         SectionHeader(
                             title = "Choose one of your free slots",
-                            subtitle = "The student's maximum-active and overlap rules still apply.",
+                            subtitle = "The student must confirm the proposed follow-up before it is booked.",
                         )
                         Spacer(Modifier.height(8.dp))
 
-                        if (grouped.isEmpty()) {
+                        if (choices.isEmpty()) {
                             EmptyState(
                                 icon = Icons.Outlined.Schedule,
                                 title = "No free slots available",
-                                message = "Add availability first, then come back to schedule the follow-up.",
+                                message = "Add availability first, then come back to propose the follow-up.",
                                 actionLabel = "Retry",
                                 onAction = viewModel::retry,
                             )
                         } else {
-                            grouped.forEach { (date, slots) ->
-                                Text(
-                                    text = date,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    modifier = Modifier.padding(top = 10.dp, bottom = 6.dp),
-                                )
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    slots.forEach { slot ->
-                                        FilterChip(
-                                            selected = state.selectedSlotId == slot.slotId,
-                                            onClick = { viewModel.chooseSlot(slot.slotId) },
-                                            label = {
-                                                Text(
-                                                    "${DateTimeUtils.formatTime(slot.startAt)} – " +
-                                                        DateTimeUtils.formatTime(slot.endAt),
-                                                )
-                                            },
-                                            modifier = Modifier.fillMaxWidth(),
-                                        )
-                                    }
-                                }
-                            }
+                            SessionSlotPicker(
+                                slots = choices,
+                                selectedSlotId = state.selectedSlotId,
+                                onSelectSlot = viewModel::chooseSlot,
+                                onClearSelection = viewModel::clearSlot,
+                                modifier = Modifier.padding(top = 8.dp),
+                            )
                             Spacer(Modifier.height(18.dp))
                             PrimaryButton(
-                                text = "Create follow-up appointment",
+                                text = "Send follow-up request",
                                 onClick = viewModel::submit,
                                 enabled = state.selectedSlotId != null,
                                 loading = state.isSubmitting,

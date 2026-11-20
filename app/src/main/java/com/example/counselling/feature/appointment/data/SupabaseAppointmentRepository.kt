@@ -62,6 +62,7 @@ private data class AppointmentViewRow(
     @SerialName("status_label") val statusLabel: String? = null,
     @SerialName("is_terminal") val isTerminal: Boolean? = null,
     @SerialName("follow_up_of") val followUpOf: String? = null,
+    @SerialName("last_event_code") val lastEvent: String = "booked",
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null,
 )
@@ -153,6 +154,15 @@ class SupabaseAppointmentRepository(
         Unit
     }
 
+    override suspend fun confirmFollowUp(appointmentId: String): Result<Unit> =
+        runQuery("Could not confirm the follow-up.") {
+            supabase.postgrest.rpc(
+                "confirm_followup_appointment",
+                buildJsonObject { put("p_appointment_id", appointmentId) },
+            )
+            Unit
+        }
+
     override suspend fun cancelAppointment(appointmentId: String): Result<Unit> =
         runQuery("Could not cancel the appointment.") {
             supabase.postgrest.rpc(
@@ -222,6 +232,8 @@ class SupabaseAppointmentRepository(
             status = AppointmentStatus.fromWire(statusCode),
             followUpOf = followUpOf,
             createdAt = createdAt?.let(::parseInstant),
+            lastEvent = lastEvent,
+            updatedAt = updatedAt?.let(::parseInstant),
         )
     }
 

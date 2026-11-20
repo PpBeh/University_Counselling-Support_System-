@@ -379,12 +379,28 @@ create table public.appointments (
     status_code text not null default 'pending'
         references public.appointment_statuses (code),
     follow_up_of uuid references public.appointments (id) on delete set null,
+    -- Last workflow event, used for the in-app "!" notification on the card.
+    last_event_code text not null default 'booked',
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
     constraint appointments_note_length
         check (note is null or char_length(btrim(note)) <= 1000),
     constraint appointments_follow_up_not_self
-        check (follow_up_of is null or follow_up_of <> id)
+        check (follow_up_of is null or follow_up_of <> id),
+    constraint appointments_last_event_check
+        check (last_event_code in (
+            'booked',
+            'rescheduled_by_student',
+            'rescheduled_by_counsellor',
+            'confirmed',
+            'declined',
+            'cancelled_by_student',
+            'cancelled_by_counsellor',
+            'completed',
+            'no_show',
+            'followup_requested',
+            'followup_confirmed_by_student'
+        ))
 );
 
 -- One slot can be held by at most one active appointment.
@@ -1690,7 +1706,9 @@ begin
 
     begin
         update public.appointments
-        set slot_id = p_new_slot_id
+        set slot_id = p_new_slot_id,
+            status_code = 'pending',
+            last_event_code = 'rescheduled_by_student'
         where id = p_appointment_id;
     exception
         when unique_violation then
@@ -1752,7 +1770,8 @@ begin
     end if;
 
     update public.appointments
-    set status_code = 'cancelled'
+    set status_code = 'cancelled',
+        last_event_code = 'cancelled_by_student'
     where id = p_appointment_id;
 end;
 $function$;
@@ -1776,7 +1795,7 @@ begin
         raise exception 'Only an active counsellor can update appointment status.';
     end if;
 
-    select a.id, a.status_code, s.start_at
+    select a.id, a.status_code, a.follow_up_of, s.start_at
     into v_appointment
     from public.appointments a
     join public.availability_slots s on s.id = a.slot_id
@@ -1795,6 +1814,10 @@ begin
         raise exception 'Counsellors can confirm or decline a pending booking, complete / mark no-show a confirmed booking, or cancel a confirmed session.';
     end if;
 
+    if v_new_status = 'confirmed' and v_appointment.follow_up_of is not null then
+        raise exception 'A proposed follow-up must be confirmed by the student.';
+    end if;
+
     if v_new_status = 'confirmed' and v_appointment.start_at <= now() then
         raise exception 'That booking time has already passed and can no longer be confirmed.';
     end if;
@@ -1804,7 +1827,14 @@ begin
     end if;
 
     update public.appointments
-    set status_code = v_new_status
+    set status_code = v_new_status,
+        last_event_code = case v_new_status
+            when 'confirmed' then 'confirmed'
+            when 'completed' then 'completed'
+            when 'no_show' then 'no_show'
+            when 'cancelled' then 'cancelled_by_counsellor'
+            else 'confirmed'
+        end
     where id = p_appointment_id;
 end;
 $function$;
@@ -1899,7 +1929,8 @@ begin
 
     begin
         update public.appointments
-        set slot_id = p_new_slot_id
+        set slot_id = p_new_slot_id,
+            last_event_code = 'rescheduled_by_counsellor'
         where id = p_appointment_id;
     exception
         when unique_violation then
@@ -2014,11 +2045,12 @@ begin
     begin
         insert into public.appointments (
             student_id, counsellor_id, slot_id, mode_code, concern_code,
-            note, status_code, follow_up_of
+            note, status_code, follow_up_of, last_event_code
         )
         values (
             v_record.student_id, v_counsellor_id, p_slot_id, v_record.mode_code,
-            v_record.concern_code, null, 'pending', v_record.appointment_id
+            v_record.concern_code, null, 'pending', v_record.appointment_id,
+            'followup_requested'
         )
         returning id into v_appointment_id;
     exception
@@ -2027,6 +2059,54 @@ begin
     end;
 
     return v_appointment_id;
+end;
+$function$;
+
+-- Student confirms a counsellor-proposed follow-up.
+create or replace function public.confirm_followup_appointment(
+    p_appointment_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $function$
+declare
+    v_student_id uuid := public.app_user_id();
+    v_appointment record;
+begin
+    if v_student_id is null then
+        raise exception 'Please sign in again.';
+    end if;
+
+    select a.id, a.status_code, a.follow_up_of, s.start_at
+    into v_appointment
+    from public.appointments a
+    join public.availability_slots s on s.id = a.slot_id
+    where a.id = p_appointment_id
+      and a.student_id = v_student_id
+    for update of a;
+
+    if not found then
+        raise exception 'That follow-up could not be found.';
+    end if;
+
+    if v_appointment.follow_up_of is null then
+        raise exception 'Only a follow-up appointment can be confirmed here.';
+    end if;
+
+    if v_appointment.status_code <> 'pending' then
+        raise exception 'This follow-up is no longer waiting for confirmation.';
+    end if;
+
+    if v_appointment.start_at <= now() then
+        raise exception 'That follow-up time has already passed.';
+    end if;
+
+    update public.appointments
+    set status_code = 'confirmed',
+        last_event_code = 'followup_confirmed_by_student'
+    where id = p_appointment_id;
 end;
 $function$;
 
@@ -2987,6 +3067,7 @@ select
     ast.label as status_label,
     ast.is_terminal,
     a.follow_up_of,
+    a.last_event_code,
     a.created_at,
     a.updated_at
 from public.appointments a
@@ -3705,6 +3786,7 @@ grant execute on function public.deactivate_account() to authenticated;
 
 revoke execute on function public.update_student_profile(text, text, text, text) from public, anon;
 grant execute on function public.update_student_profile(text, text, text, text) to authenticated;
+grant execute on function public.confirm_followup_appointment(uuid) to authenticated;
 
 revoke execute on function public.delete_counsellor(uuid) from public, anon;
 grant execute on function public.delete_counsellor(uuid) to authenticated;
@@ -3757,7 +3839,6 @@ revoke execute on function public.resolve_resource_type(text) from public, anon,
 
 notify pgrst, 'reload schema';
 
--- ============================================================================
 -- 4. Reference rows needed by the copy
 -- ============================================================================
 
@@ -3800,6 +3881,7 @@ on conflict (code) do nothing;
 insert into public.appointment_status_transitions (from_status_code, to_status_code) values
     ('pending', 'confirmed'),
     ('pending', 'cancelled'),
+    ('confirmed', 'pending'),
     ('confirmed', 'completed'),
     ('confirmed', 'no_show'),
     ('confirmed', 'cancelled')

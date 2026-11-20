@@ -70,7 +70,7 @@ private fun AdminAppointmentsScreen(
     val filters = listOf("All", "Pending", "Confirmed", "Completed", "No show", "Cancelled")
     var selectedFilter by remember { mutableStateOf("All") }
 
-    val appointments = remember(state.appointments, selectedFilter) {
+    val appointments = run {
         val filtered = selectedFilter.toApiStatus()?.let { status ->
             state.appointments.filter { it.status == status }
         } ?: state.appointments

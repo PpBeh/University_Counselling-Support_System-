@@ -17,7 +17,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
@@ -43,6 +42,8 @@ import com.example.counselling.ui.components.LoadingShimmer
 import com.example.counselling.ui.components.PrimaryButton
 import com.example.counselling.ui.components.SecondaryButton
 import com.example.counselling.ui.components.SectionHeader
+import com.example.counselling.ui.components.SessionSlotPicker
+import com.example.counselling.ui.components.TimeSlotChoice
 import com.example.counselling.ui.components.showAppMessage
 
 @Composable
@@ -153,7 +154,9 @@ fun RescheduleRoute(
 
                 else -> {
                     val appointment = checkNotNull(state.appointment)
-                    val grouped = state.slots.groupBy { DateTimeUtils.formatDate(it.startAt) }
+                    val choices = state.slots.map {
+                        TimeSlotChoice(it.slotId, it.startAt, it.endAt)
+                    }
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -182,34 +185,19 @@ fun RescheduleRoute(
                         )
                         Spacer(Modifier.height(8.dp))
 
-                        if (grouped.isEmpty()) {
+                        if (choices.isEmpty()) {
                             InfoCard(
                                 title = "No free slots right now",
                                 body = "There are no other free slots with this counsellor. Please try again later or keep your current appointment.",
                             )
                         } else {
-                            grouped.forEach { (date, slots) ->
-                                Text(
-                                    text = date,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    modifier = Modifier.padding(top = 12.dp, bottom = 6.dp),
-                                )
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    slots.forEach { slot ->
-                                        FilterChip(
-                                            selected = state.selectedSlotId == slot.slotId,
-                                            onClick = { viewModel.chooseSlot(slot.slotId) },
-                                            label = {
-                                                Text(
-                                                    "${DateTimeUtils.formatTime(slot.startAt)} – " +
-                                                        DateTimeUtils.formatTime(slot.endAt),
-                                                )
-                                            },
-                                            modifier = Modifier.fillMaxWidth(),
-                                        )
-                                    }
-                                }
-                            }
+                            SessionSlotPicker(
+                                slots = choices,
+                                selectedSlotId = state.selectedSlotId,
+                                onSelectSlot = viewModel::chooseSlot,
+                                onClearSelection = viewModel::clearSlot,
+                                modifier = Modifier.padding(top = 8.dp),
+                            )
                             Spacer(Modifier.height(18.dp))
                             PrimaryButton(
                                 text = "Confirm new time",

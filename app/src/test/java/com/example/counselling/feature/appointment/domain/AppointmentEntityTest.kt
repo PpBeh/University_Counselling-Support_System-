@@ -51,6 +51,8 @@ class AppointmentEntityTest {
     private fun appointment(
         startHoursFromNow: Long = 48,
         status: AppointmentStatus = AppointmentStatus.Confirmed,
+        followUpOf: String? = null,
+        lastEvent: String = "booked",
     ) = Appointment(
         id = "appointment-1",
         student = student,
@@ -61,6 +63,8 @@ class AppointmentEntityTest {
         concern = ConcernCategory.ANXIETY,
         note = "First session",
         status = status,
+        followUpOf = followUpOf,
+        lastEvent = lastEvent,
     )
 
     @Test
@@ -73,6 +77,14 @@ class AppointmentEntityTest {
         assertThrows(DomainException::class.java) {
             tooSoon.reschedule("slot-2", slot(24), now, student)
         }
+    }
+
+    @Test
+    fun studentReschedule_returnsConfirmedAppointmentToPendingForCounsellorReconfirmation() {
+        val confirmed = appointment(startHoursFromNow = 48, status = AppointmentStatus.Confirmed)
+        val moved = confirmed.reschedule("slot-2", slot(72), now, student)
+        assertEquals(AppointmentStatus.Pending, moved.status)
+        assertEquals("slot-2", moved.slotId)
     }
 
     @Test
@@ -96,6 +108,60 @@ class AppointmentEntityTest {
         val started = appointment(startHoursFromNow = -1)
         assertEquals(AppointmentStatus.Cancelled, future.cancel(now, student).status)
         assertThrows(DomainException::class.java) { started.cancel(now, student) }
+    }
+
+    @Test
+    fun followUp_isConfirmedByStudentNotCounsellorAndProducesNotices() {
+        val proposed = appointment(
+            startHoursFromNow = 48,
+            status = AppointmentStatus.Pending,
+            followUpOf = "appointment-0",
+            lastEvent = "followup_requested",
+        )
+
+        assertTrue(proposed.canConfirmFollowUp(student, now))
+        assertFalse(proposed.canConfirmFollowUp(counsellor, now))
+        assertEquals("Confirm your follow-up", proposed.noticeFor(student))
+        assertEquals(
+            "Waiting for the student to confirm the follow-up",
+            proposed.noticeFor(counsellor),
+        )
+
+        assertThrows(DomainException::class.java) {
+            proposed.withStatus(AppointmentStatus.Confirmed, now, counsellor)
+        }
+
+        val confirmed = appointment(
+            startHoursFromNow = 48,
+            status = AppointmentStatus.Confirmed,
+            followUpOf = "appointment-0",
+            lastEvent = "followup_confirmed_by_student",
+        )
+        assertEquals("Student confirmed the follow-up", confirmed.noticeFor(counsellor))
+    }
+
+    @Test
+    fun notices_distinguishConfirmationRescheduleAndCancellation() {
+        assertEquals(
+            "Your booking is confirmed",
+            appointment(status = AppointmentStatus.Confirmed, lastEvent = "confirmed")
+                .noticeFor(student),
+        )
+        assertEquals(
+            "The counsellor changed the time",
+            appointment(status = AppointmentStatus.Confirmed, lastEvent = "rescheduled_by_counsellor")
+                .noticeFor(student),
+        )
+        assertEquals(
+            "The counsellor cancelled this session",
+            appointment(status = AppointmentStatus.Cancelled, lastEvent = "cancelled_by_counsellor")
+                .noticeFor(student),
+        )
+        assertEquals(
+            "Student cancelled this session",
+            appointment(status = AppointmentStatus.Cancelled, lastEvent = "cancelled_by_student")
+                .noticeFor(counsellor),
+        )
     }
 
     @Test

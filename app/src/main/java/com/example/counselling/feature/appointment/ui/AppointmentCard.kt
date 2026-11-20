@@ -21,6 +21,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -52,7 +53,9 @@ fun AppointmentCard(
     onNoShow: (() -> Unit)? = null,
     onFeedback: (() -> Unit)? = null,
     feedbackRating: Int? = null,
+    feedbackComment: String? = null,
     onRemoveFeedback: (() -> Unit)? = null,
+    notice: String? = null,
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -122,6 +125,31 @@ fun AppointmentCard(
                 )
             }
 
+            if (!notice.isNullOrBlank()) {
+                Spacer(Modifier.height(10.dp))
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = WarningContainer,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "!",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = WarningAmber,
+                        )
+                        Text(
+                            text = notice,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = WarningAmber,
+                            modifier = Modifier.padding(start = 6.dp),
+                        )
+                    }
+                }
+            }
+
             if (appointment.isFollowUp) {
                 Spacer(Modifier.height(10.dp))
                 Row(
@@ -175,6 +203,16 @@ fun AppointmentCard(
                             Text("Remove")
                         }
                     }
+                }
+                if (!feedbackComment.isNullOrBlank()) {
+                    Text(
+                        text = feedbackComment,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
             }
 

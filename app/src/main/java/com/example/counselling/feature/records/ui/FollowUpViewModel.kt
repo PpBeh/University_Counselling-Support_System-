@@ -44,6 +44,10 @@ class FollowUpViewModel(
         _uiState.update { it.copy(selectedSlotId = slotId) }
     }
 
+    fun clearSlot() {
+        _uiState.update { it.copy(selectedSlotId = null) }
+    }
+
     fun submit() {
         val state = _uiState.value
         val slotId = state.selectedSlotId ?: return

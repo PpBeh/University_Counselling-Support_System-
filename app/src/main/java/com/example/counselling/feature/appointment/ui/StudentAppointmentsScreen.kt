@@ -19,8 +19,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
@@ -98,6 +101,7 @@ fun StudentAppointmentsRoute(
         onBook = onBook,
         onReschedule = onReschedule,
         onOpenSummaries = onOpenSummaries,
+        onConfirmFollowUp = viewModel::confirmFollowUp,
         onSubmitFeedback = viewModel::submitFeedback,
         onDeleteFeedback = viewModel::deleteFeedback,
         onCancel = viewModel::cancelAppointment,
@@ -115,6 +119,7 @@ private fun StudentAppointmentsScreen(
     onBook: () -> Unit,
     onReschedule: (String) -> Unit,
     onOpenSummaries: () -> Unit,
+    onConfirmFollowUp: (String) -> Unit,
     onSubmitFeedback: (String, Int, String) -> Unit,
     onDeleteFeedback: (String) -> Unit,
     onCancel: (String) -> Unit,
@@ -140,7 +145,9 @@ private fun StudentAppointmentsScreen(
         selectedStatusLabel = "All"
     }
 
-    val appointments = remember(state.appointments, selectedTab, selectedStatusLabel) {
+    // Do not remember this by domain-list equality: Appointment equality is
+    // identity by id, so a status-only refresh would keep the old list.
+    val appointments = run {
         val tabRows = when (selectedTab) {
             StudentAppointmentTab.UPCOMING -> state.appointments.filter {
                 it.status in setOf(AppointmentStatus.Pending, AppointmentStatus.Confirmed)
@@ -160,7 +167,14 @@ private fun StudentAppointmentsScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            AppTopBar(title = "Appointments")
+            AppTopBar(
+                title = "Appointments",
+                actions = {
+                    IconButton(onClick = onRefresh) {
+                        Icon(Icons.Outlined.Refresh, contentDescription = "Refresh appointments")
+                    }
+                },
+            )
 
             Column(
                 modifier = Modifier
@@ -302,12 +316,28 @@ private fun StudentAppointmentsScreen(
                                     } else {
                                         null
                                     },
+                                    onConfirm = if (
+                                        appointment.canConfirmFollowUp(viewer)
+                                    ) {
+                                        { onConfirmFollowUp(appointment.id) }
+                                    } else {
+                                        null
+                                    },
+                                    notice = if (
+                                        existingFeedback != null &&
+                                        appointment.status == AppointmentStatus.Completed
+                                    ) {
+                                        null
+                                    } else {
+                                        appointment.noticeFor(viewer)
+                                    },
                                     onFeedback = if (appointment.status == AppointmentStatus.Completed) {
                                         { feedbackTarget = appointment }
                                     } else {
                                         null
                                     },
                                     feedbackRating = existingFeedback?.rating,
+                                    feedbackComment = existingFeedback?.comment,
                                     onRemoveFeedback = existingFeedback?.let { feedback ->
                                         { feedbackToDelete = feedback }
                                     },

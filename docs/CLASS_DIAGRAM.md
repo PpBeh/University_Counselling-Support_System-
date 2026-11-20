@@ -129,6 +129,7 @@ classDiagram
         +String note
         +AppointmentStatus status
         +String followUpOf
+        +String lastEvent
         +String studentName
         +String counsellorName
         +String slotStart
@@ -137,6 +138,8 @@ classDiagram
         +reschedule(newSlotId, newSlot, now, actor) Appointment
         +cancel(now, actor) Appointment
         +withStatus(next, now, actor) Appointment
+        +canConfirmFollowUp(actor, now) Boolean
+        +noticeFor(actor) String
     }
 
     class AppointmentStatus {

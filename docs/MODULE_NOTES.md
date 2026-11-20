@@ -116,7 +116,7 @@ Shared Supabase configuration is in tracked `supabase.properties` (publishable U
 - No overlapping active student appointments.
 - One active appointment per slot (partial unique index).
 - Slots must be in the future and belong to an active counsellor.
-- Student reschedule is allowed only at least 12 hours before the current session and only with the same counsellor.
+- Student reschedule is allowed only at least 12 hours before the current session and only with the same counsellor. A student move returns the appointment to **pending** so the counsellor is notified and must reconfirm the new time.
 - Counsellor emergency reschedule is allowed for a confirmed session before it starts, to another free slot with the same counsellor; the student's no-overlap rule still applies and the status remains confirmed.
 - Counsellor status changes:
   - pending → confirmed or cancelled (decline)
@@ -218,7 +218,10 @@ Shared Supabase configuration is in tracked `supabase.properties` (publishable U
 - Includes non-archived records that are high risk or follow-up-needed.
 - Groups sorted due dates into Overdue / Due soon / Later.
 - High-risk records without a due date appear in Due soon for review.
-- Follow-up action uses the counsellor's own free slots; the created appointment is pending and carries `follow_up_of`, producing the student's Follow-up tag.
+- Follow-up action uses the counsellor's own free slots; the created appointment
+  is pending, carries `follow_up_of`, and appears to the student as a
+  **Confirm your follow-up** card notice. The student confirms it through
+  `confirm_followup_appointment`; the counsellor then sees a confirmation notice.
 - Student max-active, overlap, race and slot rules still apply.
 
 ---
@@ -328,7 +331,7 @@ Shared Supabase configuration is in tracked `supabase.properties` (publishable U
 
 ## Verification notes
 
-- **54 local JVM tests** cover the domain value objects/User factory, Appointment State/entity rules, Smart Match strategy, counsellor availability rules, triage grouping, resource subtypes/draft validation, self-check recommendations, and identified/anonymous enquiry/feedback validation.
+- **57 local JVM tests** cover the domain value objects/User factory, Appointment State/entity rules, card notices, follow-up confirmation rules, Smart Match strategy, counsellor availability rules, triage grouping, resource subtypes/draft validation, self-check recommendations, and identified/anonymous enquiry/feedback validation.
 - Final OOP evidence: [`OOP_NOTES.md`](OOP_NOTES.md) and
   [`CLASS_DIAGRAM.md`](CLASS_DIAGRAM.md).
 - `:app:assembleDebug` and `:app:testDebugUnitTest` are green as of the final build.

@@ -94,6 +94,13 @@ class AppointmentsViewModel(
         }
     }
 
+    fun confirmFollowUp(appointmentId: String) {
+        if (_uiState.value.isMutating) return
+        performMutation(appointmentId, "Follow-up confirmed.") {
+            repository.confirmFollowUp(appointmentId)
+        }
+    }
+
     fun declineBooking(appointmentId: String) {
         if (_uiState.value.isMutating) return
         performMutation(appointmentId, "Booking declined and slot released.") {

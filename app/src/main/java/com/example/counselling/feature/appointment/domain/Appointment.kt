@@ -28,6 +28,8 @@ class Appointment(
     val status: AppointmentStatus,
     val followUpOf: String? = null,
     val createdAt: Instant? = null,
+    val lastEvent: String = "booked",
+    val updatedAt: Instant? = null,
 ) {
 
     init {
@@ -70,6 +72,49 @@ class Appointment(
         return false
     }
 
+    fun canConfirmFollowUp(actor: User, now: Instant = Instant.now()): Boolean =
+        actor is Student &&
+            actor.id == student.id &&
+            isFollowUp &&
+            status == AppointmentStatus.Pending &&
+            slot.start.isAfter(now)
+
+    // OOP: Polymorphism - the card asks the appointment what the signed-in
+    // participant should be alerted about; no screen needs a role string.
+    fun noticeFor(actor: User): String? {
+        if (actor is Student) {
+            if (canConfirmFollowUp(actor)) return "Confirm your follow-up"
+            return when (lastEvent) {
+                "confirmed" -> "Your booking is confirmed"
+                "rescheduled_by_counsellor" -> "The counsellor changed the time"
+                "cancelled_by_counsellor" -> "The counsellor cancelled this session"
+                "completed" -> "Session completed — rate it"
+                "no_show" -> "This session was marked no-show"
+                "followup_requested" -> "Your counsellor proposed a follow-up"
+                else -> null
+            }
+        }
+        if (actor is Counsellor) {
+            if (isFollowUp && status == AppointmentStatus.Pending) {
+                return "Waiting for the student to confirm the follow-up"
+            }
+            if (status == AppointmentStatus.Pending && !isFollowUp) {
+                return if (lastEvent == "rescheduled_by_student") {
+                    "Student rescheduled — review the request"
+                } else {
+                    "New booking request — review it"
+                }
+            }
+            return when (lastEvent) {
+                "followup_confirmed_by_student" -> "Student confirmed the follow-up"
+                "cancelled_by_student" -> "Student cancelled this session"
+                "rescheduled_by_student" -> "Student changed the time"
+                else -> null
+            }
+        }
+        return null
+    }
+
     fun canBeCancelledBy(actor: User, now: Instant = Instant.now()): Boolean {
         if (actor is Student) {
             return actor.id == student.id &&
@@ -109,7 +154,13 @@ class Appointment(
                 else -> throw DomainException("You cannot reschedule this appointment.")
             }
         }
-        return copy(slot = newSlot, slotId = newSlotId)
+        // A student move returns to Pending so the counsellor must reconfirm
+        // the new time. A counsellor emergency move stays Confirmed.
+        return copy(
+            slot = newSlot,
+            slotId = newSlotId,
+            status = if (actor is Student) AppointmentStatus.Pending else status,
+        )
     }
 
     // OOP: Encapsulation - cancellation is only valid before the session starts.
@@ -137,6 +188,9 @@ class Appointment(
         if (!status.canTransitionTo(nextStatus)) {
             throw DomainException("That appointment status change is not allowed.")
         }
+        if (nextStatus == AppointmentStatus.Confirmed && isFollowUp) {
+            throw DomainException("A proposed follow-up must be confirmed by the student.")
+        }
         if (nextStatus == AppointmentStatus.Confirmed && !slot.start.isAfter(now)) {
             throw DomainException("That booking time has already passed.")
         }
@@ -162,6 +216,8 @@ class Appointment(
         status = status,
         followUpOf = followUpOf,
         createdAt = createdAt,
+        lastEvent = lastEvent,
+        updatedAt = updatedAt,
     )
 
     override fun equals(other: Any?): Boolean =

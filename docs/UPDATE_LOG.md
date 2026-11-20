@@ -385,7 +385,7 @@ Reference enquiry codes: `ENQ-DEMO01` – `ENQ-DEMO04`.
 
 ## 8. Verification already done
 
-- **54/54 JVM tests pass**
+- **57/57 JVM tests pass**
 - Android debug build: **BUILD SUCCESSFUL**
 - All domain packages free of Android/Supabase imports
 - No remaining `UserRole`, `Profile`, or legacy repository references
@@ -527,5 +527,82 @@ no longer required for normal appointment feedback.
 ### Verification after fixes
 
 - `:app:assembleDebug` — **BUILD SUCCESSFUL**
-- `:app:testDebugUnitTest` — **54/54 tests pass**
+- `:app:testDebugUnitTest` — **57/57 tests pass**
 - No database/migration changes required
+
+---
+
+## 14. Appointment workflow & notification update — 20 November 2026
+
+### 14.1 Refresh actually shows a changed status
+
+**Problem:** after a counsellor confirmed a booking, pulling to refresh did not
+update the visible card until you switched pages.
+
+**Root cause:** the list was wrapped in `remember(state.appointments)`.
+`Appointment.equals` is identity-by-id, so a list with the same ids but a new
+status compared equal and Compose kept the old derived list.
+
+**Fix:** student, counsellor and admin appointment screens now derive the
+filtered list on each recomposition instead of remembering it by list equality.
+The student and counsellor top bars also have an explicit refresh button.
+
+### 14.2 In-app notification badge on cards
+
+The database now stores `appointments.last_event_code` and exposes it through
+`v_appointments`. The card shows a `!` notice:
+
+| Recipient | Notice examples |
+|---|---|
+| Student | booking confirmed, time changed by counsellor, cancelled by counsellor, completed/no-show, confirm follow-up |
+| Counsellor | new booking request, student rescheduled, student cancelled, student confirmed follow-up, waiting for follow-up confirmation |
+
+The RPCs record the event:
+
+- `book_appointment` → `booked`
+- student reschedule → `rescheduled_by_student` (and the appointment returns to pending so the counsellor re-confirms)
+- counsellor reschedule → `rescheduled_by_counsellor`
+- confirm/complete/no-show/cancel → matching event
+- student cancel → `cancelled_by_student`
+- follow-up proposal → `followup_requested`
+- student follow-up confirmation → `followup_confirmed_by_student`
+
+### 14.3 Follow-up is confirmed by the student
+
+`create_followup_appointment` still creates a pending follow-up, but the
+counsellor no longer confirms it. The student card shows **Confirm your
+follow-up** and calls the new `confirm_followup_appointment` RPC. The counsellor
+then sees the confirmation notice.
+
+SQL changes added to [`schema.sql`](../supabase/schema.sql) and the migration:
+
+- `appointments.last_event_code` + constraint
+- `v_appointments.last_event_code`
+- updated reschedule/cancel/status/follow-up event writes
+- `confirm_followup_appointment(uuid)` and grant
+- `confirmed → pending` transition for a student reschedule
+
+**If you already ran the previous new OOP schema, run
+[`20261120_appointment_workflow_upgrade.sql`](../supabase/migrations/20261120_appointment_workflow_upgrade.sql)
+once. It is idempotent. The upgrade drops and recreates `v_appointments` because
+PostgreSQL's `CREATE OR REPLACE VIEW` cannot insert a column in the middle, and
+restores its select grant afterwards. If you have not run any schema yet, use
+`schema.sql`; it already contains everything.**
+
+### 14.4 Reschedule and follow-up time UI
+
+Both screens now use the same date + two-column time grid as booking via
+[`SessionSlotPicker.kt`](../app/src/main/java/com/example/counselling/ui/components/SessionSlotPicker.kt).
+Changing the date clears the previously selected time.
+
+### 14.5 Counsellor feedback on cards
+
+The counsellor schedule loads the safe `v_feedback` rows and shows the student's
+star rating and comment directly on completed appointment cards. Admin still sees
+aggregate stats only.
+
+### 14.6 Tests and build
+
+- `:app:testDebugUnitTest` — **57/57 tests pass**
+- `:app:assembleDebug` — **BUILD SUCCESSFUL**
+- Updated migration: [`20261120_oop_refactor.sql`](../supabase/migrations/20261120_oop_refactor.sql)

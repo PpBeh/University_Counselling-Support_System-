@@ -65,6 +65,7 @@ on conflict (code) do nothing;
 insert into public.appointment_status_transitions (from_status_code, to_status_code) values
     ('pending', 'confirmed'),
     ('pending', 'cancelled'),
+    ('confirmed', 'pending'),
     ('confirmed', 'completed'),
     ('confirmed', 'no_show'),
     ('confirmed', 'cancelled')

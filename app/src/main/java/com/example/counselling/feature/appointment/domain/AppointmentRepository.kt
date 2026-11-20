@@ -34,6 +34,8 @@ interface AppointmentRepository {
         newSlotId: String,
     ): Result<Unit>
 
+    suspend fun confirmFollowUp(appointmentId: String): Result<Unit>
+
     suspend fun cancelAppointment(appointmentId: String): Result<Unit>
 
     suspend fun updateStatus(

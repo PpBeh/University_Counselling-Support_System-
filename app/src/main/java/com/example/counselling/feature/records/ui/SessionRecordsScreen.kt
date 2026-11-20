@@ -122,10 +122,10 @@ private fun SessionRecordsScreen(
     var showArchived by rememberSaveable { mutableStateOf(false) }
     var recordToView by remember { mutableStateOf<SessionRecord?>(null) }
     var recordToDelete by remember { mutableStateOf<SessionRecord?>(null) }
-    val triage = remember(state.records) { TriageBoard().group(state.records) }
-    val visibleRecords = remember(state.records, showArchived) {
-        state.records.filter { showArchived || !it.isArchived }
-    }
+    // SessionRecord equality is id-only; recompute instead of remember(list)
+    // so archive/edit refreshes are visible immediately.
+    val triage = TriageBoard().group(state.records)
+    val visibleRecords = state.records.filter { showArchived || !it.isArchived }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {

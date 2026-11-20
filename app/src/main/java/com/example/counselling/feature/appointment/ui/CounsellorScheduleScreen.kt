@@ -18,7 +18,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -41,6 +44,7 @@ import com.example.counselling.core.domain.AppointmentStatus
 import com.example.counselling.core.domain.User
 import com.example.counselling.feature.appointment.domain.Appointment
 import com.example.counselling.feature.appointment.domain.AppointmentRepository
+import com.example.counselling.feature.enquiry.domain.FeedbackRepository
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.ConfirmDialog
@@ -54,12 +58,13 @@ import com.example.counselling.ui.components.showAppMessage
 @Composable
 fun CounsellorScheduleRoute(
     repository: AppointmentRepository,
+    feedbackRepository: FeedbackRepository,
     viewer: User,
     onManageAvailability: () -> Unit,
     onReschedule: (String) -> Unit,
 ) {
     val viewModel: AppointmentsViewModel = viewModel(
-        factory = AppointmentsViewModel.factory(repository),
+        factory = AppointmentsViewModel.factory(repository, feedbackRepository),
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarState = remember { SnackbarHostState() }
@@ -111,7 +116,9 @@ private fun CounsellorScheduleScreen(
     var pendingDecline by remember { mutableStateOf<Appointment?>(null) }
     var pendingCancel by remember { mutableStateOf<Appointment?>(null) }
 
-    val appointments = remember(state.appointments, selectedFilter, selectedTimeFilter) {
+    // Recompute from the state on every recomposition. Appointment equality is
+    // id-only, so remember(list) would hide a status-only refresh.
+    val appointments = run {
         val byTime = when (selectedTimeFilter) {
             "Upcoming" -> state.appointments.filter { DateTimeUtils.isFuture(it.slotStart) }
             "This week" -> state.appointments.filter {
@@ -131,7 +138,14 @@ private fun CounsellorScheduleScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            AppTopBar(title = "My schedule")
+            AppTopBar(
+                title = "My schedule",
+                actions = {
+                    IconButton(onClick = onRefresh) {
+                        Icon(Icons.Outlined.Refresh, contentDescription = "Refresh schedule")
+                    }
+                },
+            )
 
             Column(
                 modifier = Modifier
@@ -211,11 +225,18 @@ private fun CounsellorScheduleScreen(
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             items(appointments, key = { it.id }) { appointment ->
+                                val feedback = state.feedback[appointment.id]
                                 AppointmentCard(
                                     appointment = appointment,
                                     viewer = viewer,
                                     isBusy = state.isMutating,
-                                    onConfirm = if (appointment.status == AppointmentStatus.Pending) {
+                                    notice = appointment.noticeFor(viewer),
+                                    feedbackRating = feedback?.rating,
+                                    feedbackComment = feedback?.comment,
+                                    onConfirm = if (
+                                        appointment.status == AppointmentStatus.Pending &&
+                                        !appointment.isFollowUp
+                                    ) {
                                         { onConfirm(appointment.id) }
                                     } else {
                                         null

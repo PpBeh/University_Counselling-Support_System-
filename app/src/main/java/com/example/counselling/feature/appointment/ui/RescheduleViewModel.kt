@@ -50,6 +50,10 @@ class RescheduleViewModel(
         _uiState.update { it.copy(selectedSlotId = slotId) }
     }
 
+    fun clearSlot() {
+        _uiState.update { it.copy(selectedSlotId = null) }
+    }
+
     fun submit() {
         val current = _uiState.value
         val appointment = current.appointment ?: return

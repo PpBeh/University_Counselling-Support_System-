@@ -112,7 +112,7 @@ Verify:
 ```sql
 select count(*) from public.concern_categories;          -- 8
 select count(*) from public.appointment_statuses;         -- 5
-select count(*) from public.appointment_status_transitions; -- 5
+select count(*) from public.appointment_status_transitions; -- 6
 select count(*) from public.counsellors;                 -- 2
 select count(*) from public.administrators;              -- 1
 select count(*) from public.resources;                   -- 11
@@ -270,6 +270,18 @@ select count(*) from public.enquiries;         -- = old enquiries
 
 Then run the subtype checks in Section 3. If any count is wrong, **do not**
 proceed and do not run the optional drop; restore the copy.
+
+## 5a. Already on the previous new OOP schema?
+
+If you ran an earlier copy of `schema.sql` (before the appointment notification
+update), run
+[`supabase/migrations/20261120_appointment_workflow_upgrade.sql`](../supabase/migrations/20261120_appointment_workflow_upgrade.sql)
+once in the SQL Editor. It adds `last_event_code`, the notification view field,
+the student follow-up confirmation RPC and the `confirmed → pending` transition.
+It is idempotent.
+
+Do not run this upgrade on the **old profiles** schema; use the main migration
+in Section 4 for that.
 
 ## 6. Optional destructive cleanup
 
@@ -600,7 +612,7 @@ the shared `supabase.properties`.
 | RLS proof | `supabase/test_queries_oop_rls.sql` |
 | Supertype/subtype helpers | `public.app_user_id()`, `app_identity_id()`, `app_role()`, `app_counsellor_id()` |
 | Profile method | `update_student_profile` |
-| Appointment methods | `book_appointment`, `reschedule_appointment`, `cancel_appointment`, `update_appointment_status`, `counsellor_reschedule_appointment`, `create_followup_appointment` |
+| Appointment methods | `book_appointment`, `reschedule_appointment`, `cancel_appointment`, `update_appointment_status`, `counsellor_reschedule_appointment`, `create_followup_appointment`, `confirm_followup_appointment` |
 | Aggregate methods | `create_counsellor`, `update_counsellor`, `create_resource`, `update_resource`, `delete_resource` |
 | Enquiry methods | `submit_enquiry`, `get_enquiry_by_code`, `withdraw_enquiry_by_code` |
 | Admin aggregate | `admin_dashboard_stats` |

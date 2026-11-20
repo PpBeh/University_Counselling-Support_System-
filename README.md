@@ -191,9 +191,10 @@ docs/
 ## Verification
 
 - `:app:assembleDebug` — **BUILD SUCCESSFUL**
-- `:app:testDebugUnitTest` — **54/54 tests passed**
+- `:app:testDebugUnitTest` — **57/57 tests passed**
   - value objects, User hierarchy, UserFactory, AppointmentStatus
-  - Appointment entity reschedule/cancel rules
+  - Appointment entity reschedule/cancel and follow-up confirmation rules
+  - in-app card notices for confirm/reschedule/cancel/follow-up
   - Smart Counsellor Match strategy
   - counsellor availability and weekly repeat rules
   - triage grouping

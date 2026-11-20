@@ -234,10 +234,14 @@ is a foreign key, not duplicated name/email.
 | `note` | text | Yes | Max 1,000 |
 | `status_code` | text | No | FK appointment_statuses; default pending |
 | `follow_up_of` | uuid | Yes | Self FK, set null |
+| `last_event_code` | text | No | Last workflow event used for the in-app card notice; default booked |
 | `created_at` / `updated_at` | timestamptz | No | Auditing |
 
 **Constraints:** partial unique `(slot_id)` where status is pending/confirmed;
-self-follow-up check; status-transition trigger.
+self-follow-up check; status-transition trigger; allowed `last_event_code`
+values (booked, rescheduled_by_student, rescheduled_by_counsellor, confirmed,
+declined, cancelled_by_student, cancelled_by_counsellor, completed, no_show,
+followup_requested, followup_confirmed_by_student).
 **3NF:** status/mode/concern labels are not copied into this row; the references
 resolve current display values. `follow_up_of` is a relationship, not a text
 flag.
@@ -395,6 +399,7 @@ revoked from `PUBLIC`/`anon` and granted to `authenticated` where appropriate.
 | `update_appointment_status` | Assigned active counsellor | Confirm/decline/complete/no-show/cancel |
 | `counsellor_reschedule_appointment` | Assigned active counsellor | Emergency confirmed move |
 | `create_followup_appointment` | Owning active counsellor | Pending follow-up for a record |
+| `confirm_followup_appointment` | Owning active student | Student confirms a proposed follow-up; sets confirmed + notice event |
 | `deactivate_account` | Active student | Block if upcoming; set inactive |
 | `update_student_profile` | Active student | Atomically update `users.full_name/phone` and `students.programme/preferred_session_mode` |
 | `delete_counsellor` | Administrator | Block/deactivate/hard-delete rule |
@@ -426,7 +431,7 @@ revoked from `PUBLIC`/`anon` and granted to `authenticated` where appropriate.
 | `v_counsellors` | Counsellor + aggregated associations | Any active signed-in user |
 | `v_administrators` | Admin rows | Admin only |
 | `v_availability_slots` | Free future booking catalogue | Any active signed-in user |
-| `v_appointments` | Appointment + names/slot/status/category | Student own, counsellor own, admin all |
+| `v_appointments` | Appointment + names/slot/status/category/last event | Student own, counsellor own, admin all |
 | `v_session_records` | Records incl. private notes | Owning counsellor only |
 | `v_feedback` | Rating + session context | Student own or counsellor own |
 | `v_resources` | Resource + subtype fields + brackets | Students published; staff all |
