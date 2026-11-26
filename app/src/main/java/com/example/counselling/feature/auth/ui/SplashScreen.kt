@@ -24,8 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.example.counselling.ui.theme.TealPrimary
-import com.example.counselling.ui.theme.TealPrimaryContainer
+
 
 @Composable
 fun SplashScreen(modifier: Modifier = Modifier) {
@@ -51,14 +50,14 @@ fun SplashScreen(modifier: Modifier = Modifier) {
         ) {
             Surface(
                 shape = CircleShape,
-                color = TealPrimaryContainer,
+                color = MaterialTheme.colorScheme.primaryContainer,
                 modifier = Modifier.size(92.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Outlined.FavoriteBorder,
                         contentDescription = null,
-                        tint = TealPrimary,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(42.dp),
                     )
                 }
@@ -66,6 +65,7 @@ fun SplashScreen(modifier: Modifier = Modifier) {
             Text(
                 text = "Counselling Support",
                 style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.padding(top = 24.dp),
                 textAlign = TextAlign.Center,
             )

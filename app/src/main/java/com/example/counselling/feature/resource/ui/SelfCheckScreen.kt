@@ -52,10 +52,7 @@ import com.example.counselling.ui.components.SecondaryButton
 import com.example.counselling.ui.components.SectionHeader
 import com.example.counselling.ui.components.StatusChip
 import com.example.counselling.ui.components.showAppMessage
-import com.example.counselling.ui.theme.SuccessContainer
-import com.example.counselling.ui.theme.SuccessGreen
-import com.example.counselling.ui.theme.WarningContainer
-import com.example.counselling.ui.theme.WarningAmber
+import com.example.counselling.ui.theme.LocalSemanticColors
 import kotlinx.coroutines.launch
 
 @Composable
@@ -183,15 +180,15 @@ private fun IntroContent(onStart: () -> Unit) {
         InfoCard(
             title = "Screening aid, not a diagnosis",
             body = "This check-in can help you notice what support might be useful. It does not diagnose a condition and does not replace a counsellor or doctor.",
-            containerColor = WarningContainer.copy(alpha = 0.55f),
-            accentColor = WarningAmber,
+            containerColor = LocalSemanticColors.current.warningContainer.copy(alpha = 0.6f),
+            accentColor = LocalSemanticColors.current.warningContent,
         )
         Spacer(Modifier.height(16.dp))
         InfoCard(
             title = "Your answers are not stored",
             body = "No score or answer is written to the database. Only this device's current screen holds them.",
-            containerColor = SuccessContainer.copy(alpha = 0.45f),
-            accentColor = SuccessGreen,
+            containerColor = LocalSemanticColors.current.successContainer.copy(alpha = 0.55f),
+            accentColor = LocalSemanticColors.current.successContent,
         )
         Spacer(Modifier.height(22.dp))
         PrimaryButton(text = "Start check-in", onClick = onStart)

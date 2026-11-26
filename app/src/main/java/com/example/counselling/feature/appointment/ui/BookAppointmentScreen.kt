@@ -61,8 +61,6 @@ import com.example.counselling.ui.components.PrimaryButton
 import com.example.counselling.ui.components.SecondaryButton
 import com.example.counselling.ui.components.SectionHeader
 import com.example.counselling.ui.components.showAppMessage
-import com.example.counselling.ui.theme.TealPrimaryContainer
-import com.example.counselling.ui.theme.TealOnPrimaryContainer
 import java.time.LocalDate
 
 @Composable
@@ -268,15 +266,15 @@ private fun MatchCard(
             .clickable(onClick = onClick),
         shape = MaterialTheme.shapes.large,
         color = if (isBestMatch) {
-            TealPrimaryContainer.copy(alpha = 0.65f)
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
         } else {
             MaterialTheme.colorScheme.surface
         },
-        border = BorderStroke(
-            1.dp,
-            if (isBestMatch) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.outlineVariant,
-        ),
+        border = if (isBestMatch) {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
+        } else {
+            null
+        },
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Row(
@@ -346,7 +344,7 @@ private fun MatchCard(
                 Icon(
                     imageVector = Icons.Outlined.Schedule,
                     contentDescription = null,
-                    tint = TealOnPrimaryContainer,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.size(17.dp),
                 )
                 Text(

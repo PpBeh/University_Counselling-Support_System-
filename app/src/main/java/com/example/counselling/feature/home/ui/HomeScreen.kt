@@ -53,10 +53,8 @@ import com.example.counselling.ui.components.InfoCard
 import com.example.counselling.ui.components.LoadingShimmer
 import com.example.counselling.ui.components.SectionHeader
 import com.example.counselling.ui.components.UserAvatar
+import com.example.counselling.ui.theme.LocalSemanticColors
 import com.example.counselling.ui.theme.SoftError
-import com.example.counselling.ui.theme.SuccessContainer
-import com.example.counselling.ui.theme.SuccessGreen
-import com.example.counselling.ui.theme.WarningContainer
 
 @Composable
 fun HomeScreen(
@@ -164,6 +162,7 @@ private fun StudentHome(
     appointmentError: String?,
     onRetryAppointments: () -> Unit,
 ) {
+    val semantic = LocalSemanticColors.current
     val nextAppointment = appointments
         .filter {
             it.status in setOf(AppointmentStatus.Pending, AppointmentStatus.Confirmed) &&
@@ -265,8 +264,8 @@ private fun StudentHome(
         title = "Private by design",
         body = "Your sessions are only visible to you and the counsellor involved. Anonymous enquiries do not store your identity.",
         icon = Icons.Outlined.Forum,
-        containerColor = SuccessContainer.copy(alpha = 0.45f),
-        accentColor = SuccessGreen,
+        containerColor = semantic.successContainer.copy(alpha = 0.55f),
+        accentColor = semantic.successContent,
     )
 
     Spacer(Modifier.height(16.dp))
@@ -279,6 +278,7 @@ private fun StudentHome(
 
 @Composable
 private fun CounsellorHome(onNavigate: (String) -> Unit) {
+    val semantic = LocalSemanticColors.current
     SectionHeader(
         title = "Your work today",
         subtitle = "Support students while keeping clear boundaries.",
@@ -330,7 +330,8 @@ private fun CounsellorHome(onNavigate: (String) -> Unit) {
         icon = Icons.Outlined.Description,
         actionLabel = "Open records",
         onAction = { onNavigate(Routes.COUNSELLOR_RECORDS) },
-        containerColor = WarningContainer.copy(alpha = 0.45f),
+        containerColor = semantic.warningContainer.copy(alpha = 0.6f),
+        accentColor = semantic.warningContent,
     )
 
     Spacer(Modifier.height(16.dp))
@@ -338,8 +339,8 @@ private fun CounsellorHome(onNavigate: (String) -> Unit) {
         title = "Privacy reminder",
         body = "Private session notes are visible only to you. Students see the public summary, and administrators see aggregate counts only.",
         icon = Icons.Outlined.Groups,
-        containerColor = SuccessContainer.copy(alpha = 0.45f),
-        accentColor = SuccessGreen,
+        containerColor = semantic.successContainer.copy(alpha = 0.55f),
+        accentColor = semantic.successContent,
     )
 }
 
@@ -351,6 +352,7 @@ private fun AdminHome(
     statsError: String?,
     onRetryStats: () -> Unit,
 ) {
+    val semantic = LocalSemanticColors.current
     SectionHeader(
         title = "At a glance",
         subtitle = "Aggregate numbers only — no private notes or individual records.",
@@ -483,8 +485,8 @@ private fun AdminHome(
         title = "Student care stays private",
         body = "Admins do not have access to private session notes or individual feedback. The dashboard shows aggregate counts only.",
         icon = Icons.Outlined.Groups,
-        containerColor = SuccessContainer.copy(alpha = 0.45f),
-        accentColor = SuccessGreen,
+        containerColor = semantic.successContainer.copy(alpha = 0.55f),
+        accentColor = semantic.successContent,
     )
 }
 

@@ -34,8 +34,7 @@ import com.example.counselling.core.domain.User
 import com.example.counselling.feature.appointment.domain.Appointment
 import com.example.counselling.ui.components.StarRating
 import com.example.counselling.ui.components.StatusChip
-import com.example.counselling.ui.theme.WarningContainer
-import com.example.counselling.ui.theme.WarningAmber
+import com.example.counselling.ui.theme.LocalSemanticColors
 
 @Composable
 fun AppointmentCard(
@@ -56,6 +55,7 @@ fun AppointmentCard(
     onRemoveFeedback: (() -> Unit)? = null,
     notice: String? = null,
 ) {
+    val semantic = LocalSemanticColors.current
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
@@ -127,7 +127,7 @@ fun AppointmentCard(
                 Spacer(Modifier.height(10.dp))
                 Surface(
                     shape = MaterialTheme.shapes.small,
-                    color = WarningContainer,
+                    color = semantic.warningContainer,
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -136,12 +136,12 @@ fun AppointmentCard(
                         Text(
                             text = "!",
                             style = MaterialTheme.typography.titleSmall,
-                            color = WarningAmber,
+                            color = semantic.warningContent,
                         )
                         Text(
                             text = notice,
                             style = MaterialTheme.typography.labelMedium,
-                            color = WarningAmber,
+                            color = semantic.warningContent,
                             modifier = Modifier.padding(start = 6.dp),
                         )
                     }
@@ -155,7 +155,7 @@ fun AppointmentCard(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = WarningContainer),
+                        colors = CardDefaults.cardColors(containerColor = semantic.warningContainer),
                         shape = MaterialTheme.shapes.small,
                     ) {
                         Row(
@@ -165,13 +165,13 @@ fun AppointmentCard(
                             Icon(
                                 imageVector = Icons.Outlined.Person,
                                 contentDescription = null,
-                                tint = WarningAmber,
+                                tint = semantic.warningContent,
                                 modifier = Modifier.height(15.dp),
                             )
                             Text(
                                 text = "Follow-up",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = WarningAmber,
+                                color = semantic.warningContent,
                                 modifier = Modifier.padding(start = 4.dp),
                             )
                         }

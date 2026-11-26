@@ -652,6 +652,12 @@ Changed file:
 - `SecondaryButton` now uses a borderless tonal fill.
 - Unselected time-slot cards and appointment/info cards use surface fills instead
   of outlines; selected slots keep a single primary border.
+- Login and Register now paint `MaterialTheme.colorScheme.background` themselves.
+  Before this, dark mode could show light text over the white Activity window.
+- The splash icon follows the theme and its title explicitly uses `onBackground`.
+- Success/warning badges and InfoCards use `LocalSemanticColors`, with separate
+  dark containers, so status text stays readable in both modes.
+- The login card shadow was removed to avoid a stray frame in dark mode.
 
 ### 14.9 Tests and build
 

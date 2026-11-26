@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
@@ -93,10 +94,14 @@ fun CounsellingTheme(
         }
     }
 
-    MaterialTheme(
-        colorScheme = colors,
-        typography = CounsellingTypography,
-        shapes = CounsellingShapes,
-        content = content,
-    )
+    CompositionLocalProvider(
+        LocalSemanticColors provides if (darkTheme) DarkSemanticColors else LightSemanticColors,
+    ) {
+        MaterialTheme(
+            colorScheme = colors,
+            typography = CounsellingTypography,
+            shapes = CounsellingShapes,
+            content = content,
+        )
+    }
 }

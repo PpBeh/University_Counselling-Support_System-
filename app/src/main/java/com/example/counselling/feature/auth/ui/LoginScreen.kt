@@ -1,6 +1,7 @@
 // Team auth (Login) + Module 1 context | Owner: Beh
 package com.example.counselling.feature.auth.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -98,6 +99,7 @@ private fun LoginScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .imePadding(),
     ) {
         Column(
@@ -148,7 +150,6 @@ private fun LoginScreen(
                 shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 1.dp,
-                shadowElevation = 1.dp,
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     Text(

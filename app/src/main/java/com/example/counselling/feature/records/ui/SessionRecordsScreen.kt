@@ -69,7 +69,7 @@ import com.example.counselling.ui.components.RiskBadge
 import com.example.counselling.ui.components.SectionHeader
 import com.example.counselling.ui.components.StatusChip
 import com.example.counselling.ui.components.showAppMessage
-import com.example.counselling.ui.theme.WarningAmber
+import com.example.counselling.ui.theme.LocalSemanticColors
 
 @Composable
 fun SessionRecordsRoute(
@@ -295,7 +295,7 @@ private fun RecordDetailDialog(record: SessionRecord, onDismiss: () -> Unit) {
                             (record.followUpDue?.let { DateTimeUtils.formatDateTime(it) }
                                 ?: "Not set"),
                         style = MaterialTheme.typography.labelMedium,
-                        color = WarningAmber,
+                        color = LocalSemanticColors.current.warningContent,
                         modifier = Modifier.padding(top = 10.dp),
                     )
                 }
@@ -543,7 +543,7 @@ fun RecordCard(
                     text = "Follow-up due: " +
                         (record.followUpDue?.let { DateTimeUtils.formatDateTime(it) } ?: "Not set"),
                     style = MaterialTheme.typography.labelMedium,
-                    color = WarningAmber,
+                    color = LocalSemanticColors.current.warningContent,
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }

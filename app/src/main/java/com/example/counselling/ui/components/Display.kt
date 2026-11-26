@@ -48,12 +48,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.example.counselling.ui.theme.SuccessContainer
-import com.example.counselling.ui.theme.SuccessGreen
-import com.example.counselling.ui.theme.TealPrimaryContainer
-import com.example.counselling.ui.theme.TealOnPrimaryContainer
-import com.example.counselling.ui.theme.WarningAmber
-import com.example.counselling.ui.theme.WarningContainer
+import com.example.counselling.ui.theme.LocalSemanticColors
 
 @Composable
 fun SectionHeader(
@@ -309,13 +304,13 @@ fun UserAvatar(
                 if (contentDescription != null) this.contentDescription = contentDescription
             },
         shape = CircleShape,
-        color = TealPrimaryContainer,
+        color = MaterialTheme.colorScheme.primaryContainer,
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text = initials.take(2).uppercase(),
                 style = MaterialTheme.typography.titleMedium,
-                color = TealOnPrimaryContainer,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
         }
     }
@@ -327,13 +322,15 @@ fun StatusChip(
     modifier: Modifier = Modifier,
 ) {
     val label = status.replace('_', ' ').replaceFirstChar { it.uppercase() }
+    val semantic = LocalSemanticColors.current
     val colors = when (status) {
-        "pending" -> WarningContainer to WarningAmber
-        "confirmed" -> TealPrimaryContainer to TealOnPrimaryContainer
-        "completed" -> SuccessContainer to SuccessGreen
-        "answered" -> SuccessContainer to SuccessGreen
+        "pending" -> semantic.warningContainer to semantic.warningContent
+        "confirmed" -> MaterialTheme.colorScheme.primaryContainer to
+            MaterialTheme.colorScheme.onPrimaryContainer
+        "completed" -> semantic.successContainer to semantic.successContent
+        "answered" -> semantic.successContainer to semantic.successContent
         "no_show" -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.error
-        "open" -> WarningContainer to WarningAmber
+        "open" -> semantic.warningContainer to semantic.warningContent
         else -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
     }
 
@@ -365,10 +362,11 @@ fun RiskBadge(
         "low" -> "Low risk"
         else -> riskLevel.replaceFirstChar { it.uppercase() }
     }
+    val semantic = LocalSemanticColors.current
     val colors = when (normalized) {
         "high" -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.error
-        "medium" -> WarningContainer to WarningAmber
-        "low" -> SuccessContainer to SuccessGreen
+        "medium" -> semantic.warningContainer to semantic.warningContent
+        "low" -> semantic.successContainer to semantic.successContent
         else -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
     }
 
@@ -393,6 +391,7 @@ fun StarRating(
     onRatingChange: ((Int) -> Unit)? = null,
     starSize: Dp = 30.dp,
 ) {
+    val semantic = LocalSemanticColors.current
     Row(modifier = modifier) {
         for (star in 1..5) {
             if (onRatingChange != null) {
@@ -400,7 +399,8 @@ fun StarRating(
                     Icon(
                         imageVector = starIcon(star <= rating),
                         contentDescription = "$star star${if (star == 1) "" else "s"}",
-                        tint = if (star <= rating) WarningAmber else MaterialTheme.colorScheme.outline,
+                        tint = if (star <= rating) semantic.warningContent
+                        else MaterialTheme.colorScheme.outline,
                         modifier = Modifier.size(starSize),
                     )
                 }
@@ -408,7 +408,8 @@ fun StarRating(
                 Icon(
                     imageVector = starIcon(star <= rating),
                     contentDescription = null,
-                    tint = if (star <= rating) WarningAmber else MaterialTheme.colorScheme.outline,
+                    tint = if (star <= rating) semantic.warningContent
+                    else MaterialTheme.colorScheme.outline,
                     modifier = Modifier.size(starSize),
                 )
             }

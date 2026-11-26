@@ -51,8 +51,7 @@ import com.example.counselling.ui.components.FilterChipRow
 import com.example.counselling.ui.components.LoadingShimmer
 import com.example.counselling.ui.components.PrimaryButton
 import com.example.counselling.ui.components.StatusChip
-import com.example.counselling.ui.theme.SuccessContainer
-import com.example.counselling.ui.theme.SuccessGreen
+import com.example.counselling.ui.theme.LocalSemanticColors
 
 @Composable
 fun CounsellorListRoute(
@@ -267,12 +266,12 @@ private fun CounsellorRow(counsellor: Counsellor, onClick: () -> Unit) {
                     } else if (counsellor.availableThisWeek()) {
                         Surface(
                             shape = MaterialTheme.shapes.small,
-                            color = SuccessContainer,
+                            color = LocalSemanticColors.current.successContainer,
                         ) {
                             Text(
                                 text = "Free this week",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = SuccessGreen,
+                                color = LocalSemanticColors.current.successContent,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                             )
                         }

@@ -1,6 +1,7 @@
 // Module 1 | Owner: Beh
 package com.example.counselling.feature.auth.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -107,7 +108,11 @@ private fun RegisterScreen(
 ) {
     val focusManager = LocalFocusManager.current
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
         Column(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.statusBarsPadding()) {
                 AppTopBar(title = "Create account", onBack = onBack)
