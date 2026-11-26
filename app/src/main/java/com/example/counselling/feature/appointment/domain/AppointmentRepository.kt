@@ -15,6 +15,8 @@ interface AppointmentRepository {
 
     suspend fun getAvailableSlots(): Result<List<AvailableSlot>>
 
+    suspend fun getCounsellorSlots(counsellorId: String): Result<List<AvailableSlot>>
+
     suspend fun getSmartMatches(concern: ConcernCategory): Result<List<CounsellorMatch>>
 
     suspend fun bookAppointment(

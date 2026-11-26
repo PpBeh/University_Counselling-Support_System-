@@ -1464,7 +1464,7 @@ begin
         )
         values (
             v_student_id, v_slot.counsellor_id, p_slot_id, v_mode_code,
-            v_concern_code, v_note, 'pending'
+            v_concern_code, v_note, 'confirmed'
         )
         returning id into v_appointment_id;
     exception
@@ -2896,19 +2896,19 @@ select
     ), '{}'::text[]) as languages,
     c.bio,
     s.start_at,
-    s.end_at
+    s.end_at,
+    exists (
+        select 1
+        from public.appointments a
+        where a.slot_id = s.id
+          and a.status_code in ('pending', 'confirmed')
+    ) as is_booked
 from public.availability_slots s
 join public.counsellors c on c.user_id = s.counsellor_id
 join public.users u on u.id = c.user_id
 where u.is_active = true
   and s.start_at > now()
-  and public.app_role() is not null
-  and not exists (
-      select 1
-      from public.appointments a
-      where a.slot_id = s.id
-        and a.status_code in ('pending', 'confirmed')
-  );
+  and public.app_role() is not null;
 
 create or replace view public.v_appointments as
 select

@@ -86,6 +86,7 @@ class Appointment(
         if (actor is Student) {
             if (canConfirmFollowUp(actor)) return "Confirm your follow-up"
             return when (lastEvent) {
+                "booked" -> "Your booking is confirmed"
                 "confirmed" -> "Your booking is confirmed"
                 "rescheduled_by_counsellor" -> "The counsellor changed the time"
                 "cancelled_by_counsellor" -> "The counsellor cancelled this session"
@@ -109,6 +110,9 @@ class Appointment(
                 } else {
                     "New booking request — review it"
                 }
+            }
+            if (status == AppointmentStatus.Confirmed && lastEvent == "booked") {
+                return "New confirmed booking"
             }
             return when (lastEvent) {
                 "followup_confirmed_by_student" -> "Student confirmed the follow-up"

@@ -20,7 +20,7 @@ import org.junit.Test
 
 class AppointmentEntityTest {
 
-    private val now = Instant.parse("2026-11-20T09:00:00Z")
+    private val now = Instant.now()
     private val student = Student(
         id = "student-1",
         email = Email.of("aina@example.com"),
@@ -166,6 +166,16 @@ class AppointmentEntityTest {
             "Your booking is confirmed",
             appointment(status = AppointmentStatus.Confirmed, lastEvent = "confirmed")
                 .noticeFor(student),
+        )
+        assertEquals(
+            "Your booking is confirmed",
+            appointment(status = AppointmentStatus.Confirmed, lastEvent = "booked")
+                .noticeFor(student),
+        )
+        assertEquals(
+            "New confirmed booking",
+            appointment(status = AppointmentStatus.Confirmed, lastEvent = "booked")
+                .noticeFor(counsellor),
         )
         assertEquals(
             "The counsellor changed the time",

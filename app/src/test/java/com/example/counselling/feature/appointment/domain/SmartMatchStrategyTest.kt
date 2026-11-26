@@ -18,6 +18,7 @@ class SmartMatchStrategyTest {
         name: String,
         specialisations: List<ConcernCategory>,
         startHour: Long,
+        isBooked: Boolean = false,
     ) = AvailableSlot(
         slotId = slotId,
         counsellorId = counsellorId,
@@ -29,6 +30,7 @@ class SmartMatchStrategyTest {
             now.plusSeconds(startHour * 3600),
             now.plusSeconds((startHour + 1) * 3600),
         ),
+        isBooked = isBooked,
     )
 
     @Test
@@ -47,6 +49,26 @@ class SmartMatchStrategyTest {
         assertEquals("Counsellor Two", matches[0].counsellorName)
         assertEquals(2, matches[1].slots.size)
         assertTrue(matches[1].nextSlot.timeSlot.start.isBefore(matches[1].slots[1].timeSlot.start))
+    }
+
+    @Test
+    fun bookedSlotsAreNotRankedAsFreeMatches() {
+        val slots = listOf(
+            slot(
+                "s1",
+                "c1",
+                "Counsellor One",
+                listOf(ConcernCategory.ANXIETY),
+                10,
+                isBooked = true,
+            ),
+            slot("s2", "c2", "Counsellor Two", listOf(ConcernCategory.ANXIETY), 20),
+        )
+
+        val matches = SpecialisationThenEarliestSlotStrategy()
+            .match(slots, ConcernCategory.ANXIETY)
+
+        assertEquals(listOf("c2"), matches.map { it.counsellorId })
     }
 
     @Test

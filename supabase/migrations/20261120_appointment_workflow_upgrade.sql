@@ -4,7 +4,8 @@
 --
 -- USE THIS IF:
 --   you already ran the previous OOP schema (public.appointments /
---   v_appointments exist) and do NOT want to recreate the project.
+--   v_appointments / v_availability_slots exist) and do NOT want to
+--   recreate the project.
 --
 -- DO NOT USE THIS ON THE OLD profiles SCHEMA. Use
 -- 20261120_oop_refactor.sql for that migration instead.
@@ -12,6 +13,8 @@
 -- Adds:
 --   * appointments.last_event_code + card notification metadata
 --   * v_appointments.last_event_code
+--   * v_availability_slots.is_booked (all future slots, including booked)
+--   * student booking becomes confirmed immediately
 --   * student reschedule returns the appointment to pending for counsellor reconfirmation
 --   * follow-up request events and student confirmation RPC
 --   * confirmed -> pending transition used only by the student reschedule RPC
@@ -53,66 +56,170 @@ values ('confirmed', 'pending')
 on conflict do nothing;
 -- CREATE OR REPLACE VIEW cannot insert/reorder a column. Recreate this
 -- read-only projection instead; its select grant is restored at the end.
-drop view if exists public.v_appointments;
+drop view if exists public.v_availability_slots;
 
-create view public.v_appointments as
+create view public.v_availability_slots as
 select
-    a.id,
-    a.student_id,
-    su.full_name as student_name,
-    su.email as student_email,
-    su.phone as student_phone,
-    su.is_active as student_is_active,
-    st.student_id as student_code,
-    st.programme as student_programme,
-    st.preferred_session_mode as student_preferred_mode,
-    a.counsellor_id,
-    cu.full_name as counsellor_name,
-    cu.email as counsellor_email,
-    cu.phone as counsellor_phone,
-    cu.is_active as counsellor_is_active,
-    c.bio as counsellor_bio,
+    s.id as slot_id,
+    s.counsellor_id,
+    u.full_name as counsellor_name,
     coalesce((
-        select array_agg(ccs.label order by ccs.sort_order)
+        select array_agg(cc.label order by cc.sort_order)
         from public.counsellor_specialisations cs
-        join public.concern_categories ccs on ccs.code = cs.category_code
-        where cs.counsellor_id = c.user_id
-    ), '{}'::text[]) as counsellor_specialisations,
+        join public.concern_categories cc on cc.code = cs.category_code
+        where cs.counsellor_id = s.counsellor_id
+    ), '{}'::text[]) as specialisations,
     coalesce((
         select array_agg(l.name order by l.name)
         from public.counsellor_languages cl
         join public.languages l on l.language_id = cl.language_id
-        where cl.counsellor_id = c.user_id
-    ), '{}'::text[]) as counsellor_languages,
-    a.slot_id,
+        where cl.counsellor_id = s.counsellor_id
+    ), '{}'::text[]) as languages,
+    c.bio,
     s.start_at,
     s.end_at,
-    a.mode_code,
-    sm.label as mode_label,
-    a.concern_code,
-    cc.label as concern_category,
-    a.note,
-    a.status_code,
-    ast.label as status_label,
-    ast.is_terminal,
-    a.follow_up_of,
-    a.last_event_code,
-    a.created_at,
-    a.updated_at
-from public.appointments a
-join public.students st on st.user_id = a.student_id
-join public.users su on su.id = st.user_id
-join public.counsellors c on c.user_id = a.counsellor_id
-join public.users cu on cu.id = c.user_id
-join public.availability_slots s on s.id = a.slot_id
-join public.session_modes sm on sm.code = a.mode_code
-join public.concern_categories cc on cc.code = a.concern_code
-join public.appointment_statuses ast on ast.code = a.status_code
-where (public.app_role() = 'student' and a.student_id = public.app_user_id())
-   or (public.app_role() = 'counsellor' and a.counsellor_id = public.app_counsellor_id())
-   or public.app_role() = 'administrator';
+    exists (
+        select 1
+        from public.appointments a
+        where a.slot_id = s.id
+          and a.status_code in ('pending', 'confirmed')
+    ) as is_booked
+from public.availability_slots s
+join public.counsellors c on c.user_id = s.counsellor_id
+join public.users u on u.id = c.user_id
+where u.is_active = true
+  and s.start_at > now()
+  and public.app_role() is not null;
 
 
+
+create or replace function public.book_appointment(
+    p_slot_id uuid,
+    p_mode text,
+    p_concern_category text,
+    p_note text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, auth
+as $function$
+declare
+    v_student_id uuid := public.app_user_id();
+    v_user record;
+    v_slot record;
+    v_appointment_id uuid;
+    v_active_count integer;
+    v_mode_code text := public.resolve_session_mode(p_mode);
+    v_concern_code text := public.resolve_concern_category(p_concern_category);
+    v_note text := nullif(btrim(coalesce(p_note, '')), '');
+begin
+    if v_student_id is null then
+        raise exception 'Please sign in again.';
+    end if;
+
+    select u.id, u.user_type, u.is_active
+    into v_user
+    from public.users u
+    where u.id = v_student_id
+    for update;
+
+    if not found then
+        raise exception 'Only students can book counselling appointments.';
+    end if;
+
+    if v_user.user_type <> 'student' then
+        raise exception 'Only students can book counselling appointments.';
+    end if;
+
+    if not v_user.is_active then
+        raise exception 'This account is inactive. Please contact the counselling office.';
+    end if;
+
+    if v_mode_code is null then
+        raise exception 'Please choose in-person or online mode.';
+    end if;
+
+    if v_concern_code is null then
+        raise exception 'Please choose a valid concern category.';
+    end if;
+
+    if v_note is not null and char_length(v_note) > 1000 then
+        raise exception 'Your note must be 1,000 characters or fewer.';
+    end if;
+
+    select s.id, s.counsellor_id, s.start_at, s.end_at,
+           u.is_active as counsellor_active
+    into v_slot
+    from public.availability_slots s
+    join public.counsellors c on c.user_id = s.counsellor_id
+    join public.users u on u.id = c.user_id
+    where s.id = p_slot_id
+    for update of s;
+
+    if not found then
+        raise exception 'That time slot could not be found.';
+    end if;
+
+    if not v_slot.counsellor_active then
+        raise exception 'This counsellor is not accepting new appointments.';
+    end if;
+
+    if v_slot.start_at <= now() then
+        raise exception 'That time slot has already passed. Please choose another.';
+    end if;
+
+    if exists (
+        select 1
+        from public.appointments a
+        where a.slot_id = p_slot_id
+          and a.status_code in ('pending', 'confirmed')
+    ) then
+        raise exception 'That time slot was just booked. Please choose another slot.';
+    end if;
+
+    select count(*)
+    into v_active_count
+    from public.appointments a
+    join public.availability_slots s on s.id = a.slot_id
+    where a.student_id = v_student_id
+      and a.status_code in ('pending', 'confirmed')
+      and s.start_at > now();
+
+    if v_active_count >= 2 then
+        raise exception 'You can have at most 2 active upcoming appointments. Cancel one first.';
+    end if;
+
+    if exists (
+        select 1
+        from public.appointments a
+        join public.availability_slots s on s.id = a.slot_id
+        where a.student_id = v_student_id
+          and a.status_code in ('pending', 'confirmed')
+          and tstzrange(s.start_at, s.end_at, '[)')
+              && tstzrange(v_slot.start_at, v_slot.end_at, '[)')
+    ) then
+        raise exception 'You already have another appointment that overlaps this time.';
+    end if;
+
+    begin
+        insert into public.appointments (
+            student_id, counsellor_id, slot_id, mode_code, concern_code,
+            note, status_code
+        )
+        values (
+            v_student_id, v_slot.counsellor_id, p_slot_id, v_mode_code,
+            v_concern_code, v_note, 'confirmed'
+        )
+        returning id into v_appointment_id;
+    exception
+        when unique_violation then
+            raise exception 'That time slot was just booked. Please choose another slot.';
+    end;
+
+    return v_appointment_id;
+end;
+$function$;
 
 create or replace function public.reschedule_appointment(
     p_appointment_id uuid,
@@ -629,6 +736,7 @@ $function$;
 
 grant execute on function public.confirm_followup_appointment(uuid) to authenticated;
 grant select on public.v_appointments to authenticated;
+grant select on public.v_availability_slots to authenticated;
 
 notify pgrst, 'reload schema';
 

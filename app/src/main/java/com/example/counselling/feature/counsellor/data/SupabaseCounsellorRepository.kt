@@ -47,6 +47,7 @@ private data class AvailableSlotViewRow(
     val bio: String = "",
     @SerialName("start_at") val startAt: String,
     @SerialName("end_at") val endAt: String,
+    @SerialName("is_booked") val isBooked: Boolean = false,
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null,
 )
@@ -84,6 +85,7 @@ class SupabaseCounsellorRepository(
                 .select { order("start_at", Order.ASCENDING) }
                 .decodeList<AvailableSlotViewRow>()
                 .map(::toDomain)
+                .filterNot { it.isBooked }
                 .groupBy { it.counsellorId }
 
             counsellors.map { it.withAvailability(freeByCounsellor[it.id].orEmpty()) }
@@ -260,6 +262,7 @@ class SupabaseCounsellorRepository(
         id = row.slotId,
         counsellorId = row.counsellorId,
         timeSlot = TimeSlot.fromStored(parseInstant(row.startAt), parseInstant(row.endAt)),
+        isBooked = row.isBooked,
     )
 
     private fun parseInstant(value: String): Instant =

@@ -14,6 +14,7 @@ class AvailableSlot(
     val languages: List<String>,
     val bio: String,
     val timeSlot: TimeSlot,
+    val isBooked: Boolean = false,
 ) {
     val startAt: String get() = timeSlot.start.toString()
     val endAt: String get() = timeSlot.end.toString()
@@ -66,7 +67,7 @@ class SpecialisationThenEarliestSlotStrategy : CounsellorMatchStrategy {
         slots: List<AvailableSlot>,
         concern: ConcernCategory,
     ): List<CounsellorMatch> = slots
-        .filter { concern in it.specialisations }
+        .filter { concern in it.specialisations && !it.isBooked }
         .groupBy { it.counsellorId }
         .mapNotNull { (counsellorId, counsellorSlots) ->
             val ordered = counsellorSlots.sortedBy { it.timeSlot.start }

@@ -385,7 +385,7 @@ Reference enquiry codes: `ENQ-DEMO01` – `ENQ-DEMO04`.
 
 ## 8. Verification already done
 
-- **58/58 JVM tests pass**
+- **59/59 JVM tests pass**
 - Android debug build: **BUILD SUCCESSFUL**
 - All domain packages free of Android/Supabase imports
 - No remaining `UserRole`, `Profile`, or legacy repository references
@@ -527,7 +527,7 @@ no longer required for normal appointment feedback.
 ### Verification after fixes
 
 - `:app:assembleDebug` — **BUILD SUCCESSFUL**
-- `:app:testDebugUnitTest` — **58/58 tests pass**
+- `:app:testDebugUnitTest` — **59/59 tests pass**
 - No database/migration changes required
 
 ---
@@ -559,11 +559,11 @@ The database now stores `appointments.last_event_code` and exposes it through
 | Recipient | Notice examples |
 |---|---|
 | Student | booking confirmed, time changed by counsellor, cancelled by counsellor, completed/no-show, confirm follow-up |
-| Counsellor | new booking request, student rescheduled, student cancelled, student confirmed follow-up, waiting for follow-up confirmation |
+| Counsellor | new confirmed booking, student rescheduled, student cancelled, student confirmed follow-up, waiting for follow-up confirmation |
 
 The RPCs record the event:
 
-- `book_appointment` → `booked`
+- `book_appointment` → `booked`, with status **confirmed** immediately
 - student reschedule → `rescheduled_by_student` (and the appointment returns to pending so the counsellor re-confirms)
 - counsellor reschedule → `rescheduled_by_counsellor`
 - confirm/complete/no-show/cancel → matching event
@@ -628,8 +628,22 @@ The availability manager is now efficient for admins managing many slots:
 Changed file:
 [`CounsellorAvailabilityScreen.kt`](../app/src/main/java/com/example/counselling/feature/counsellor/ui/CounsellorAvailabilityScreen.kt).
 
-### 14.7 Tests and build
+### 14.7 Confirmed booking and mobile timetable
 
-- `:app:testDebugUnitTest` — **58/58 tests pass**
+- `book_appointment` now inserts `status_code = 'confirmed'` and the default
+  `last_event_code = 'booked'`.
+- The student success screen says **Appointment confirmed**, not requested.
+- `v_availability_slots` now returns every future slot with `is_booked`.
+- The booking timetable shows booked times greyed out with a **Booked** label;
+  a fully booked day is marked **Full** and shows a “This day is fully
+  booked” notice.
+- Free-only consumers (`getAvailableSlots`, Smart Match, counsellor cards,
+  reschedule/follow-up pickers) filter `is_booked = false`.
+- The slot step is mobile-first: horizontal day strip, touch-friendly two-column
+  time cards, a full-width confirm button and no web-style table.
+
+### 14.8 Tests and build
+
+- `:app:testDebugUnitTest` — **59/59 tests pass**
 - `:app:assembleDebug` — **BUILD SUCCESSFUL**
 - Updated migration: [`20261120_oop_refactor.sql`](../supabase/migrations/20261120_oop_refactor.sql)

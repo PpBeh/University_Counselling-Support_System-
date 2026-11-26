@@ -13,6 +13,7 @@ import com.example.counselling.core.domain.SessionMode
 import com.example.counselling.core.domain.Student
 import com.example.counselling.core.ui.BaseViewModel
 import com.example.counselling.feature.appointment.domain.AppointmentRepository
+import com.example.counselling.feature.appointment.domain.AvailableSlot
 import com.example.counselling.feature.appointment.domain.CounsellorMatch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,11 +33,14 @@ data class BookAppointmentUiState(
     val concern: String? = null,
     val matches: List<CounsellorMatch> = emptyList(),
     val selectedMatch: CounsellorMatch? = null,
+    val slots: List<AvailableSlot> = emptyList(),
     val selectedSlotId: String? = null,
     val mode: String = "in_person",
     val note: String = "",
     val noteError: String? = null,
     val isLoadingMatches: Boolean = false,
+    val isLoadingSlots: Boolean = false,
+    val slotsError: String? = null,
     val loadError: String? = null,
     val isBooking: Boolean = false,
 )
@@ -73,6 +77,7 @@ class BookAppointmentViewModel(
                 step = BookingStep.MATCHES,
                 matches = emptyList(),
                 selectedMatch = null,
+                slots = emptyList(),
                 selectedSlotId = null,
                 loadError = null,
             )
@@ -86,13 +91,26 @@ class BookAppointmentViewModel(
         _uiState.update {
             it.copy(
                 selectedMatch = match,
+                slots = emptyList(),
                 selectedSlotId = null,
+                isLoadingSlots = true,
+                slotsError = null,
                 step = BookingStep.SLOTS,
             )
+        }
+        loadCounsellorSlots(match)
+    }
+
+    fun retrySlots() {
+        _uiState.value.selectedMatch?.let { match ->
+            _uiState.update { it.copy(isLoadingSlots = true, slotsError = null) }
+            loadCounsellorSlots(match)
         }
     }
 
     fun chooseSlot(slotId: String) {
+        val slot = _uiState.value.slots.firstOrNull { it.slotId == slotId } ?: return
+        if (slot.isBooked) return
         _uiState.update { it.copy(selectedSlotId = slotId) }
     }
 
@@ -114,6 +132,7 @@ class BookAppointmentViewModel(
                 step = BookingStep.CONCERN,
                 matches = emptyList(),
                 selectedMatch = null,
+                slots = emptyList(),
                 selectedSlotId = null,
                 loadError = null,
             )
@@ -125,6 +144,7 @@ class BookAppointmentViewModel(
             it.copy(
                 step = BookingStep.MATCHES,
                 selectedMatch = null,
+                slots = emptyList(),
                 selectedSlotId = null,
             )
         }
@@ -163,7 +183,7 @@ class BookAppointmentViewModel(
             _uiState.update { it.copy(isBooking = false) }
             result.onSuccess {
                 _uiState.update { it.copy(step = BookingStep.SUCCESS) }
-                postSuccess("Appointment requested with ${match.counsellorName}.")
+                postSuccess("Appointment confirmed with ${match.counsellorName}.")
             }.onFailure { error ->
                 postError(error.message ?: "Could not book the appointment.")
             }
@@ -190,6 +210,33 @@ class BookAppointmentViewModel(
                         it.copy(
                             isLoadingMatches = false,
                             loadError = error.message ?: "Could not load counsellors.",
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun loadCounsellorSlots(match: CounsellorMatch) {
+        viewModelScope.launch {
+            repository.getCounsellorSlots(match.counsellorId)
+                .onSuccess { slots ->
+                    _uiState.update { state ->
+                        if (state.selectedMatch?.counsellorId == match.counsellorId) {
+                            state.copy(
+                                slots = slots,
+                                isLoadingSlots = false,
+                                slotsError = null,
+                            )
+                        } else {
+                            state
+                        }
+                    }
+                }
+                .onFailure { error ->
+                    _uiState.update { state ->
+                        state.copy(
+                            isLoadingSlots = false,
+                            slotsError = error.message ?: "Could not load the timetable.",
                         )
                     }
                 }

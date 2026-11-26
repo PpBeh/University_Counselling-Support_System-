@@ -123,6 +123,7 @@ fun BookAppointmentRoute(
                     state = state,
                     onChooseSlot = viewModel::chooseSlot,
                     onClearSlot = viewModel::clearSlot,
+                    onRetrySlots = viewModel::retrySlots,
                     onModeChange = viewModel::setMode,
                     onNoteChange = viewModel::setNote,
                     onBook = viewModel::book,
@@ -379,14 +380,33 @@ private fun SlotStep(
     state: BookAppointmentUiState,
     onChooseSlot: (String) -> Unit,
     onClearSlot: () -> Unit,
+    onRetrySlots: () -> Unit,
     onModeChange: (String) -> Unit,
     onNoteChange: (String) -> Unit,
     onBook: () -> Unit,
 ) {
     val match = state.selectedMatch ?: return
-    val grouped = remember(match) {
-        match.slots.groupBy { DateTimeUtils.formatDate(it.startAt) }
+    if (state.isLoadingSlots) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp),
+        ) {
+            Text(
+                text = "Loading ${match.counsellorName}'s timetable…",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 12.dp, bottom = 14.dp),
+            )
+            LoadingShimmer(rows = 4)
+        }
+        return
     }
+    if (state.slotsError != null) {
+        ErrorState(message = state.slotsError, onRetry = onRetrySlots)
+        return
+    }
+    val grouped = state.slots.groupBy { DateTimeUtils.formatDate(it.startAt) }
     var selectedDate by remember(match.counsellorId) {
         mutableStateOf(grouped.keys.firstOrNull())
     }
@@ -432,6 +452,7 @@ private fun SlotStep(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 grouped.keys.forEach { date ->
+                    val freeOnDay = grouped[date].orEmpty().count { !it.isBooked }
                     FilterChip(
                         selected = date == activeDate,
                         onClick = {
@@ -440,7 +461,9 @@ private fun SlotStep(
                                 onClearSlot()
                             }
                         },
-                        label = { Text(date) },
+                        label = {
+                            Text(if (freeOnDay == 0) "$date · Full" else date)
+                        },
                     )
                 }
             }
@@ -452,12 +475,20 @@ private fun SlotStep(
             )
             Spacer(Modifier.height(10.dp))
 
+            val freeOnDate = visibleSlots.count { !it.isBooked }
             if (visibleSlots.isEmpty()) {
                 InfoCard(
                     title = "No times on this date",
                     body = "Choose another date above.",
                 )
             } else {
+                if (freeOnDate == 0) {
+                    InfoCard(
+                        title = "This day is fully booked",
+                        body = "Every time on this day already has an appointment. Choose another date above.",
+                        modifier = Modifier.padding(bottom = 10.dp),
+                    )
+                }
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     visibleSlots.chunked(2).forEach { rowSlots ->
                         Row(
@@ -467,7 +498,8 @@ private fun SlotStep(
                             rowSlots.forEach { slot ->
                                 TimeSlotOption(
                                     slot = slot,
-                                    selected = state.selectedSlotId == slot.slotId,
+                                    selected = !slot.isBooked &&
+                                        state.selectedSlotId == slot.slotId,
                                     onClick = { onChooseSlot(slot.slotId) },
                                     modifier = Modifier.weight(1f),
                                 )
@@ -510,7 +542,7 @@ private fun SlotStep(
         )
         Spacer(Modifier.height(18.dp))
         PrimaryButton(
-            text = "Request appointment",
+            text = "Confirm appointment",
             onClick = onBook,
             enabled = state.selectedSlotId != null,
             loading = state.isBooking,
@@ -527,17 +559,20 @@ private fun TimeSlotOption(
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = modifier.clickable(onClick = onClick),
+        modifier = if (slot.isBooked) modifier else modifier.clickable(onClick = onClick),
         shape = MaterialTheme.shapes.medium,
-        color = if (selected) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            MaterialTheme.colorScheme.surface
+        color = when {
+            slot.isBooked -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+            selected -> MaterialTheme.colorScheme.primaryContainer
+            else -> MaterialTheme.colorScheme.surface
         },
         border = BorderStroke(
             1.dp,
-            if (selected) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.outlineVariant,
+            when {
+                slot.isBooked -> MaterialTheme.colorScheme.outlineVariant
+                selected -> MaterialTheme.colorScheme.primary
+                else -> MaterialTheme.colorScheme.outlineVariant
+            },
         ),
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp)) {
@@ -548,9 +583,20 @@ private fun TimeSlotOption(
                 Text(
                     text = DateTimeUtils.formatTime(slot.startAt),
                     style = MaterialTheme.typography.titleSmall,
+                    color = if (slot.isBooked) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
                     modifier = Modifier.weight(1f),
                 )
-                if (selected) {
+                if (slot.isBooked) {
+                    Text(
+                        text = "Booked",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else if (selected) {
                     Icon(
                         imageVector = Icons.Outlined.CheckCircle,
                         contentDescription = "Selected",
@@ -597,13 +643,13 @@ private fun SuccessStep(
             }
         }
         Text(
-            text = "Appointment requested",
+            text = "Appointment confirmed",
             style = MaterialTheme.typography.headlineSmall,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 18.dp),
         )
         Text(
-            text = "Your request is pending until the counsellor confirms it. It will appear under Appointments.",
+            text = "Your session is booked. It will appear under Appointments, and the counsellor can still cancel it if needed.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,

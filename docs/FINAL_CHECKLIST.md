@@ -7,7 +7,7 @@
 | All 6 modules implemented | ✅ |
 | All 3 unique features implemented | ✅ |
 | Android debug build | ✅ `BUILD SUCCESSFUL` |
-| Local unit tests | ✅ 58/58 passed |
+| Local unit tests | ✅ 59/59 passed |
 | Supabase schema/RLS in repository | ✅ OOP Phase 1 |
 | OOP database migration + seeds + RLS proof | ✅ Phase 1 |
 | OOP Android domain layer | ✅ Phase 2 |
@@ -133,7 +133,8 @@ Full details: `SETUP_GUIDE.md` §2.3 and §9.
 - [ ] Sign in with a repaired student account.
 - [ ] Home shows welcome + next appointment.
 - [ ] **Appointments → Book** → choose a concern → verify ranked Smart Match and Best match.
-- [ ] Pick a slot; choose mode; add a note; submit → pending appointment.
+- [ ] Pick a slot; choose mode; add a note; submit → **confirmed** appointment (counsellor keeps cancellation rights).
+- [ ] Booked times are grey/disabled; a fully booked day is marked **Full**.
 - [ ] Reschedule within 12 hours is blocked; reschedule a future slot.
 - [ ] Cancel with confirm dialog; slot returns to availability.
 - [ ] **Appointments → Past** → session summaries and session feedback.
@@ -149,7 +150,7 @@ Full details: `SETUP_GUIDE.md` §2.3 and §9.
 ### Counsellor (Aisyah)
 
 - [ ] Sign in.
-- [ ] Schedule: confirm a pending appointment; decline another pending request; cancel a confirmed session for an emergency; reschedule a confirmed session; complete/no-show; Upcoming/This week/All filters.
+- [ ] Schedule: new student bookings arrive confirmed; cancel a confirmed session for an emergency; reschedule a confirmed session; complete/no-show; handle a pending follow-up or legacy request; Upcoming/This week/All filters.
 - [ ] Manage my availability: add a single slot, repeat 3 weeks, edit/delete free slot; booked slot is locked.
 - [ ] Records: create a record for a completed appointment; validation for short notes/risk/follow-up.
 - [ ] Triage board: Overdue / Due soon / Later and high-risk inclusion.

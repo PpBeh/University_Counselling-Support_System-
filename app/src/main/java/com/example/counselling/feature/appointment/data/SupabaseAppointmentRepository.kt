@@ -77,6 +77,7 @@ private data class AvailableSlotViewRow(
     val bio: String = "",
     @SerialName("start_at") val startAt: String,
     @SerialName("end_at") val endAt: String,
+    @SerialName("is_booked") val isBooked: Boolean = false,
 )
 
 // OOP: Repository implementation - returns domain Appointments/AvailableSlots,
@@ -103,7 +104,21 @@ class SupabaseAppointmentRepository(
                 .select { order("start_at", Order.ASCENDING) }
                 .decodeList<AvailableSlotViewRow>()
                 .map { it.toDomain() }
+                .filterNot { it.isBooked }
         }
+
+    override suspend fun getCounsellorSlots(
+        counsellorId: String,
+    ): Result<List<AvailableSlot>> = runQuery("Could not load timetable slots.") {
+        supabase
+            .from("v_availability_slots")
+            .select {
+                filter { eq("counsellor_id", counsellorId) }
+                order("start_at", Order.ASCENDING)
+            }
+            .decodeList<AvailableSlotViewRow>()
+            .map { it.toDomain() }
+    }
 
     override suspend fun getSmartMatches(
         concern: ConcernCategory,
@@ -251,6 +266,7 @@ class SupabaseAppointmentRepository(
             parseInstant(startAt),
             parseInstant(endAt),
         ),
+        isBooked = isBooked,
     )
 
     private fun parseInstant(value: String): Instant =

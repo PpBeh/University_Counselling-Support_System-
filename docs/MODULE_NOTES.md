@@ -112,10 +112,12 @@ Shared Supabase configuration is in tracked `supabase.properties` (publishable U
 
 **Business rules**
 
+- A student booking is created **confirmed** immediately because the counsellor has already published the slot. The counsellor can still cancel it from the schedule.
 - Maximum two active upcoming appointments.
 - No overlapping active student appointments.
 - One active appointment per slot (partial unique index).
 - Slots must be in the future and belong to an active counsellor.
+- `v_availability_slots` now includes every future slot with `is_booked`; free-only consumers filter that flag, while the booking grid shows booked times disabled.
 - Student reschedule is allowed only at least 12 hours before the current session and only with the same counsellor. A student move returns the appointment to **pending** so the counsellor is notified and must reconfirm the new time.
 - Counsellor emergency reschedule is allowed for a confirmed session before it starts, to another free slot with the same counsellor; the student's no-overlap rule still applies and the status remains confirmed.
 - Counsellor status changes:
@@ -336,7 +338,7 @@ Shared Supabase configuration is in tracked `supabase.properties` (publishable U
 
 ## Verification notes
 
-- **58 local JVM tests** cover the domain value objects/User factory, Appointment State/entity rules, card notices, follow-up confirmation rules, Smart Match strategy, counsellor availability rules, triage grouping, resource subtypes/draft validation, self-check recommendations, and identified/anonymous enquiry/feedback validation.
+- **59 local JVM tests** cover the domain value objects/User factory, Appointment State/entity rules, card notices, follow-up confirmation rules, Smart Match strategy (including booked-slot exclusion), counsellor availability rules, triage grouping, resource subtypes/draft validation, self-check recommendations, and identified/anonymous enquiry/feedback validation.
 - Final OOP evidence: [`OOP_NOTES.md`](OOP_NOTES.md) and
   [`CLASS_DIAGRAM.md`](CLASS_DIAGRAM.md).
 - `:app:assembleDebug` and `:app:testDebugUnitTest` are green as of the final build.

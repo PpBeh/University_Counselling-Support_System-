@@ -393,7 +393,7 @@ revoked from `PUBLIC`/`anon` and granted to `authenticated` where appropriate.
 | `app_role()` | RLS/authenticated | Active user_type |
 | `app_counsellor_id()` | RLS/authenticated | Active counsellor users.id |
 | `resolve_*()` | internal | Label/code → reference code |
-| `book_appointment` | Active students | Atomic booking with caps/overlap |
+| `book_appointment` | Active students | Atomic **confirmed** booking with caps/overlap |
 | `reschedule_appointment` | Owning active student | Same-counsellor move, ≥12h notice |
 | `cancel_appointment` | Owning active student | Cancel before start |
 | `update_appointment_status` | Assigned active counsellor | Confirm/decline/complete/no-show/cancel |
@@ -430,7 +430,7 @@ revoked from `PUBLIC`/`anon` and granted to `authenticated` where appropriate.
 | `v_students` | Student supertype+subtype | Staff or self |
 | `v_counsellors` | Counsellor + aggregated associations | Any active signed-in user |
 | `v_administrators` | Admin rows | Admin only |
-| `v_availability_slots` | Free future booking catalogue | Any active signed-in user |
+| `v_availability_slots` | Future booking catalogue including booked slots, with `is_booked`; free-only consumers filter it | Any active signed-in user |
 | `v_appointments` | Appointment + names/slot/status/category/last event | Student own, counsellor own, admin all |
 | `v_session_records` | Records incl. private notes | Owning counsellor only |
 | `v_feedback` | Rating + session context | Student own or counsellor own |
