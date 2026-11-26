@@ -41,6 +41,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.AppConstants
 import com.example.counselling.core.SessionManager
+import com.example.counselling.core.settings.ThemeMode
+import com.example.counselling.core.settings.ThemePreferences
 import com.example.counselling.feature.appointment.domain.AppointmentRepository
 import com.example.counselling.feature.auth.domain.AuthRepository
 import com.example.counselling.feature.student.domain.StudentRepository
@@ -49,6 +51,7 @@ import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.ConfirmDialog
 import com.example.counselling.ui.components.DropdownField
+import com.example.counselling.ui.components.FilterChipRow
 import com.example.counselling.ui.components.InfoCard
 import com.example.counselling.ui.components.PrimaryButton
 import com.example.counselling.ui.components.SecondaryButton
@@ -64,6 +67,7 @@ fun ProfileRoute(
     studentRepository: StudentRepository,
     authRepository: AuthRepository,
     appointmentRepository: AppointmentRepository,
+    themePreferences: ThemePreferences,
     onSignOut: () -> Unit,
 ) {
     val viewModel: ProfileViewModel = viewModel(
@@ -75,6 +79,7 @@ fun ProfileRoute(
         ),
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val themeMode by themePreferences.mode.collectAsStateWithLifecycle()
     val snackbarState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
@@ -100,6 +105,8 @@ fun ProfileRoute(
         onRequestDeactivation = viewModel::requestDeactivation,
         onDismissDeactivation = viewModel::dismissDeactivationDialog,
         onDeactivateAccount = viewModel::deactivateAccount,
+        themeMode = themeMode,
+        onThemeModeChange = themePreferences::setMode,
         onSignOut = onSignOut,
     )
 }
@@ -124,6 +131,8 @@ private fun ProfileScreen(
     onRequestDeactivation: () -> Unit,
     onDismissDeactivation: () -> Unit,
     onDeactivateAccount: () -> Unit,
+    themeMode: ThemeMode,
+    onThemeModeChange: (ThemeMode) -> Unit,
     onSignOut: () -> Unit,
 ) {
     val focusManager = LocalFocusManager.current
@@ -307,6 +316,28 @@ private fun ProfileScreen(
                         icon = Icons.Outlined.Email,
                     )
                 }
+
+                Spacer(Modifier.height(24.dp))
+                SectionHeader(
+                    title = "Appearance",
+                    subtitle = "Choose light, dark, or follow your phone setting.",
+                )
+                Spacer(Modifier.height(8.dp))
+                FilterChipRow(
+                    options = ThemeMode.entries.map { it.label },
+                    selected = themeMode.label,
+                    onSelect = { label -> onThemeModeChange(ThemeMode.fromLabel(label)) },
+                )
+                Text(
+                    text = if (themeMode == ThemeMode.SYSTEM) {
+                        "Currently following your phone's appearance."
+                    } else {
+                        "The app will use ${themeMode.label.lowercase()} mode."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
 
                 Spacer(Modifier.height(24.dp))
                 PrimaryButton(

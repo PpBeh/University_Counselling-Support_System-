@@ -562,18 +562,15 @@ private fun TimeSlotOption(
         modifier = if (slot.isBooked) modifier else modifier.clickable(onClick = onClick),
         shape = MaterialTheme.shapes.medium,
         color = when {
-            slot.isBooked -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+            slot.isBooked -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
             selected -> MaterialTheme.colorScheme.primaryContainer
-            else -> MaterialTheme.colorScheme.surface
+            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
         },
-        border = BorderStroke(
-            1.dp,
-            when {
-                slot.isBooked -> MaterialTheme.colorScheme.outlineVariant
-                selected -> MaterialTheme.colorScheme.primary
-                else -> MaterialTheme.colorScheme.outlineVariant
-            },
-        ),
+        border = if (selected) {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
+        } else {
+            null
+        },
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp)) {
             Row(

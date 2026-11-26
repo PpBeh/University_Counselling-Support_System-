@@ -7,7 +7,7 @@
 | All 6 modules implemented | ✅ |
 | All 3 unique features implemented | ✅ |
 | Android debug build | ✅ `BUILD SUCCESSFUL` |
-| Local unit tests | ✅ 59/59 passed |
+| Local unit tests | ✅ 61/61 passed |
 | Supabase schema/RLS in repository | ✅ OOP Phase 1 |
 | OOP database migration + seeds + RLS proof | ✅ Phase 1 |
 | OOP Android domain layer | ✅ Phase 2 |
@@ -146,6 +146,7 @@ Full details: `SETUP_GUIDE.md` §2.3 and §9.
 - [ ] Submit linked question; verify it appears in the list; withdraw.
 - [ ] Home urgent card opens Hotline-only resources.
 - [ ] Profile edit, password change, deactivation block with upcoming booking and success after cancellation.
+- [ ] Profile → Appearance: switch System / Light / Dark; the choice persists after restart and dark mode has no stray outline frames.
 
 ### Counsellor (Aisyah)
 

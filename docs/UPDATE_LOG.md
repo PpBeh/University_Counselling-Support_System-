@@ -385,7 +385,7 @@ Reference enquiry codes: `ENQ-DEMO01` – `ENQ-DEMO04`.
 
 ## 8. Verification already done
 
-- **59/59 JVM tests pass**
+- **61/61 JVM tests pass**
 - Android debug build: **BUILD SUCCESSFUL**
 - All domain packages free of Android/Supabase imports
 - No remaining `UserRole`, `Profile`, or legacy repository references
@@ -527,7 +527,7 @@ no longer required for normal appointment feedback.
 ### Verification after fixes
 
 - `:app:assembleDebug` — **BUILD SUCCESSFUL**
-- `:app:testDebugUnitTest` — **59/59 tests pass**
+- `:app:testDebugUnitTest` — **61/61 tests pass**
 - No database/migration changes required
 
 ---
@@ -642,8 +642,19 @@ Changed file:
 - The slot step is mobile-first: horizontal day strip, touch-friendly two-column
   time cards, a full-width confirm button and no web-style table.
 
-### 14.8 Tests and build
+### 14.8 Appearance setting and dark-mode frame cleanup
 
-- `:app:testDebugUnitTest` — **59/59 tests pass**
+- Profile now has an **Appearance** section with **System / Light / Dark**.
+- The choice is persisted in `SharedPreferences` through `ThemePreferences`.
+- The root theme reacts immediately; no sign-out or restart.
+- Removed decorative card outlines that were almost invisible in light mode but
+  looked like error frames in dark mode.
+- `SecondaryButton` now uses a borderless tonal fill.
+- Unselected time-slot cards and appointment/info cards use surface fills instead
+  of outlines; selected slots keep a single primary border.
+
+### 14.9 Tests and build
+
+- `:app:testDebugUnitTest` — **61/61 tests pass**
 - `:app:assembleDebug` — **BUILD SUCCESSFUL**
 - Updated migration: [`20261120_oop_refactor.sql`](../supabase/migrations/20261120_oop_refactor.sql)

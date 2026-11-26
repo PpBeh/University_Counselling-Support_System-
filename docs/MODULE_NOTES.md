@@ -51,7 +51,8 @@ Shared Supabase configuration is in tracked `supabase.properties` (publishable U
   `feature/auth/data/SupabaseAuthRepository` is the implementation.
 - `ProfileScreen` / `ProfileViewModel`: own profile read/update, password
   change, deactivation; uses `StudentRepository`, `AuthRepository` and the new
-  AppointmentRepository.
+  AppointmentRepository. The shared Profile screen also has an **Appearance**
+  setting (System / Light / Dark) persisted by `ThemePreferences`.
 - `StudentListScreen` / `StudentDetailScreen`: domain `Student` directory.
 - `SessionManager`: loads a polymorphic `User` through `SupabaseUserRepository`;
   `Profile.fromUser(...)` is the temporary adapter for non-Beh screens.
@@ -338,7 +339,7 @@ Shared Supabase configuration is in tracked `supabase.properties` (publishable U
 
 ## Verification notes
 
-- **59 local JVM tests** cover the domain value objects/User factory, Appointment State/entity rules, card notices, follow-up confirmation rules, Smart Match strategy (including booked-slot exclusion), counsellor availability rules, triage grouping, resource subtypes/draft validation, self-check recommendations, and identified/anonymous enquiry/feedback validation.
+- **61 local JVM tests** cover the domain value objects/User factory, Appointment State/entity rules, card notices, follow-up confirmation rules, Smart Match strategy (including booked-slot exclusion), counsellor availability rules, triage grouping, resource subtypes/draft validation, self-check recommendations, and identified/anonymous enquiry/feedback validation.
 - Final OOP evidence: [`OOP_NOTES.md`](OOP_NOTES.md) and
   [`CLASS_DIAGRAM.md`](CLASS_DIAGRAM.md).
 - `:app:assembleDebug` and `:app:testDebugUnitTest` are green as of the final build.

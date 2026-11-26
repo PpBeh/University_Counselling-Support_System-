@@ -33,6 +33,7 @@ import com.example.counselling.core.AppContainer
 import com.example.counselling.core.MessageKind
 import com.example.counselling.core.SessionManager
 import com.example.counselling.core.SessionState
+import com.example.counselling.core.settings.ThemePreferences
 import com.example.counselling.core.UiMessage
 import com.example.counselling.core.domain.User
 import com.example.counselling.feature.appointment.domain.AppointmentRepository
@@ -133,6 +134,7 @@ fun AppRoot(container: AppContainer) {
             resourceRepository = resourceRepository,
             enquiryRepository = enquiryRepository,
             feedbackRepository = feedbackRepository,
+            themePreferences = container.themePreferences,
         )
     }
 }
@@ -188,6 +190,7 @@ private fun MainApp(
     resourceRepository: ResourceRepository,
     enquiryRepository: EnquiryRepository,
     feedbackRepository: FeedbackRepository,
+    themePreferences: ThemePreferences,
 ) {
     val destinations = remember(user) { destinationsFor(user) }
     val navController = rememberNavController()
@@ -579,6 +582,7 @@ private fun MainApp(
                     studentRepository = studentRepository,
                     authRepository = authRepository,
                     appointmentRepository = appointmentRepository,
+                    themePreferences = themePreferences,
                     onSignOut = {
                         scope.launch { sessionManager.signOut() }
                     },

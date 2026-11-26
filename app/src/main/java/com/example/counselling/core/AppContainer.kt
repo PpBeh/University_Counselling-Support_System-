@@ -4,9 +4,11 @@
 // repository interfaces, so feature code never creates its own data source.
 package com.example.counselling.core
 
+import android.content.Context
 import com.example.counselling.BuildConfig
 import com.example.counselling.core.data.SupabaseUserRepository
 import com.example.counselling.core.domain.UserRepository
+import com.example.counselling.core.settings.ThemePreferences
 import com.example.counselling.feature.appointment.data.SupabaseAppointmentRepository
 import com.example.counselling.feature.appointment.domain.AppointmentRepository
 import com.example.counselling.feature.auth.data.SupabaseAuthRepository
@@ -25,7 +27,9 @@ import com.example.counselling.feature.student.data.SupabaseStudentRepository
 import com.example.counselling.feature.student.domain.StudentRepository
 import io.github.jan.supabase.SupabaseClient
 
-class AppContainer {
+class AppContainer(context: Context) {
+
+    val themePreferences = ThemePreferences(context)
 
     val configurationError: String?
 
