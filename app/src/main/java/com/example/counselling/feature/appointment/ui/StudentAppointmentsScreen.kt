@@ -171,11 +171,18 @@ private fun StudentAppointmentsScreen(
     val appointments = run {
         val tabRows = when (selectedTab) {
             StudentAppointmentTab.UPCOMING -> state.appointments.filter {
-                it.status in setOf(AppointmentStatus.Pending, AppointmentStatus.Confirmed)
+                it.status in setOf(AppointmentStatus.Pending, AppointmentStatus.Confirmed) &&
+                    DateTimeUtils.isFuture(it.slotEnd)
             }.sortedBy { it.slotStart }
 
             StudentAppointmentTab.PAST -> state.appointments.filter {
-                it.status in setOf(AppointmentStatus.Completed, AppointmentStatus.NoShow)
+                it.status in setOf(AppointmentStatus.Completed, AppointmentStatus.NoShow) ||
+                    (
+                        it.status in setOf(
+                            AppointmentStatus.Pending,
+                            AppointmentStatus.Confirmed,
+                        ) && !DateTimeUtils.isFuture(it.slotEnd)
+                        )
             }.sortedByDescending { it.slotStart }
 
             StudentAppointmentTab.CANCELLED -> state.appointments.filter {
@@ -264,7 +271,7 @@ private fun StudentAppointmentsScreen(
                                     StudentAppointmentTab.UPCOMING ->
                                         "Booked sessions appear here."
                                     StudentAppointmentTab.PAST ->
-                                        "Completed sessions appear here."
+                                        "Completed and past sessions appear here."
                                     StudentAppointmentTab.CANCELLED ->
                                         "Cancelled appointments appear here."
                                 },

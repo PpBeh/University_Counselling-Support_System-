@@ -550,6 +550,9 @@ feedback), so Compose cannot skip a status-only update. After a successful
 mutation the ViewModel applies the server-accepted status optimistically and
 then reloads. Reschedule returns automatically to the list. The student and
 counsellor top bars also have an explicit refresh button.
+The student **Upcoming** tab now also requires `slotEnd` to be in the future;
+active appointments whose session has ended move to **Past** instead of
+remaining under Upcoming.
 
 ### 14.2 In-app notification badge on cards
 
