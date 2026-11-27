@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -127,7 +126,7 @@ fun BookAppointmentRoute(
         Column(modifier = Modifier.fillMaxSize()) {
             AppTopBar(
                 title = when (state.step) {
-                    BookingStep.CONCERN -> "Book a session"
+                    BookingStep.CONCERN -> "Book session"
                     BookingStep.MATCHES -> "Counsellor match"
                     BookingStep.SLOTS -> "Choose a time"
                     BookingStep.SUCCESS -> "Request sent"
@@ -213,7 +212,6 @@ fun BookAppointmentRoute(
             hostState = snackbarState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
                 .padding(start = 16.dp, end = 16.dp, bottom = 96.dp),
         )
     }
@@ -316,7 +314,7 @@ private fun MatchStep(
             state.matches.isEmpty() -> EmptyState(
                 icon = Icons.Outlined.Person,
                 title = "No counsellor matches yet",
-                message = "No active counsellor currently lists this concern. Try another concern or contact the counselling office.",
+                message = "No counsellor lists this concern. Try another concern.",
                 actionLabel = "Change concern",
                 onAction = onChangeConcern,
             )

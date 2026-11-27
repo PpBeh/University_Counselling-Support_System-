@@ -72,7 +72,7 @@ private fun StudentSummariesScreen(
                 style = MaterialTheme.typography.headlineSmall,
             )
             Text(
-                text = "These are the public summaries your counsellor chose to share. Private notes and risk levels are never shown.",
+                text = "Public summaries your counsellor chose to share. Private notes are never shown.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),

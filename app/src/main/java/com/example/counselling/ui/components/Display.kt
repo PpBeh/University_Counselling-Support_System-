@@ -169,38 +169,38 @@ fun EmptyState(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 40.dp),
+            .padding(horizontal = 24.dp, vertical = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Surface(
             shape = CircleShape,
             color = MaterialTheme.colorScheme.primaryContainer,
-            modifier = Modifier.size(68.dp),
+            modifier = Modifier.size(60.dp),
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(30.dp),
+                    modifier = Modifier.size(26.dp),
                 )
             }
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(14.dp))
         Text(
             text = title,
             style = MaterialTheme.typography.titleMedium,
             textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
             text = message,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
         if (actionLabel != null && onAction != null) {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
             TextButton(onClick = onAction) {
                 Text(actionLabel)
             }
@@ -273,7 +273,9 @@ fun LoadingShimmer(
     )
 
     Column(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = "Loading" },
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         repeat(rows) { index ->
@@ -329,7 +331,8 @@ fun StatusChip(
             MaterialTheme.colorScheme.onPrimaryContainer
         "completed" -> semantic.successContainer to semantic.successContent
         "answered" -> semantic.successContainer to semantic.successContent
-        "no_show" -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.error
+        "no_show" -> MaterialTheme.colorScheme.errorContainer to
+            MaterialTheme.colorScheme.onErrorContainer
         "open" -> semantic.warningContainer to semantic.warningContent
         else -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
     }
@@ -364,7 +367,8 @@ fun RiskBadge(
     }
     val semantic = LocalSemanticColors.current
     val colors = when (normalized) {
-        "high" -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.error
+        "high" -> MaterialTheme.colorScheme.errorContainer to
+            MaterialTheme.colorScheme.onErrorContainer
         "medium" -> semantic.warningContainer to semantic.warningContent
         "low" -> semantic.successContainer to semantic.successContent
         else -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant

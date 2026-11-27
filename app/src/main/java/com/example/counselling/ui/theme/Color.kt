@@ -4,7 +4,7 @@ package com.example.counselling.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val TealPrimary = Color(0xFF2A9D8F)
+val TealPrimary = Color(0xFF14766B)
 val TealOnPrimary = Color(0xFFFFFFFF)
 val TealPrimaryContainer = Color(0xFFC9EFEA)
 val TealOnPrimaryContainer = Color(0xFF063D38)
@@ -28,11 +28,11 @@ val SoftInk = Color(0xFF1B2B29)
 val MutedInk = Color(0xFF55605E)
 val SoftOutline = Color(0xFFC8D3D0)
 val SoftSurfaceVariant = Color(0xFFE7EEEC)
-val SoftError = Color(0xFFD64545)
+val SoftError = Color(0xFFB3261E)
 val SoftErrorContainer = Color(0xFFFBE5E5)
-val SuccessGreen = Color(0xFF2E7D32)
+val SuccessGreen = Color(0xFF1B5E20)
 val SuccessContainer = Color(0xFFDDF3E1)
-val WarningAmber = Color(0xFF9A6A00)
+val WarningAmber = Color(0xFF7A5200)
 val WarningContainer = Color(0xFFFFEFC8)
 
 val NightBackground = Color(0xFF101817)

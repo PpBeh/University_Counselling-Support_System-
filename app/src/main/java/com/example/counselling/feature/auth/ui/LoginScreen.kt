@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -130,14 +131,14 @@ private fun LoginScreen(
                     }
 
                     Text(
-                        text = "A calmer place to start.",
+                        text = "Counselling support",
                         style = MaterialTheme.typography.headlineMedium,
                         color = MaterialTheme.colorScheme.onBackground,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(top = 20.dp),
                     )
                     Text(
-                        text = "Book support, find practical resources and talk privately when you are ready.",
+                        text = "Book a session, read self-help resources, or ask a private question.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
@@ -195,14 +196,18 @@ private fun LoginScreen(
                 }
 
                 Text(
-                    text = "Private by design. Your session is protected by the university counselling service.",
+                    text = "Only you and your counsellor can see your sessions.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp, bottom = 20.dp),
                 )
             }
 
-            StickyBottomAction {
+            StickyBottomAction(
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .imePadding(),
+            ) {
                 PrimaryButton(
                     text = "Sign in",
                     onClick = {

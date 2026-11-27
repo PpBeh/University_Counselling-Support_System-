@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,14 +21,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.EventNote
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.EventNote
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Groups
-import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.School
 import androidx.compose.material.icons.outlined.SupportAgent
 import androidx.compose.material3.Button
@@ -189,7 +190,7 @@ private fun StudentHome(
                 HomeShortcut(
                     label = "Resources",
                     description = "Open self-help resources",
-                    icon = Icons.Outlined.MenuBook,
+                    icon = Icons.AutoMirrored.Outlined.MenuBook,
                     onClick = { onNavigate(Routes.RESOURCES) },
                 ),
                 HomeShortcut(
@@ -246,7 +247,7 @@ private fun StudentHome(
             } else {
                 "$completedCount completed session${if (completedCount == 1) "" else "s"}"
             },
-            leadingIcon = Icons.Outlined.EventNote,
+            leadingIcon = Icons.AutoMirrored.Outlined.EventNote,
             trailingContent = { Chevron() },
             onClick = { onNavigate(Routes.STUDENT_APPOINTMENTS) },
         )
@@ -315,7 +316,7 @@ private fun NextSessionCard(
                     shape = CircleShape,
                     modifier = Modifier
                         .weight(1f)
-                        .height(48.dp),
+                        .heightIn(min = 48.dp),
                 ) {
                     Text("Reschedule")
                 }
@@ -324,7 +325,7 @@ private fun NextSessionCard(
                     shape = CircleShape,
                     modifier = Modifier
                         .weight(1f)
-                        .height(48.dp),
+                        .heightIn(min = 48.dp),
                 ) {
                     Text("Details")
                 }
@@ -366,9 +367,9 @@ private fun NoUpcomingSessionCard(onBook: () -> Unit) {
                 shape = CircleShape,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
+                    .heightIn(min = 48.dp),
             ) {
-                Text("Book a session")
+                Text("Book session")
             }
         }
     }
@@ -689,7 +690,7 @@ private fun AdminHome(
         AppListRow(
             title = "Resources",
             supportingText = "Publish self-help content",
-            leadingIcon = Icons.Outlined.MenuBook,
+            leadingIcon = Icons.AutoMirrored.Outlined.MenuBook,
             trailingContent = { Chevron() },
             onClick = { onNavigate(Routes.RESOURCES) },
         )
@@ -703,7 +704,7 @@ private fun AdminHome(
         AppListRow(
             title = "All appointments",
             supportingText = "Read-only system view",
-            leadingIcon = Icons.Outlined.EventNote,
+            leadingIcon = Icons.AutoMirrored.Outlined.EventNote,
             trailingContent = { Chevron() },
             onClick = { onNavigate(Routes.ADMIN_APPOINTMENTS) },
             showDivider = false,

@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -28,10 +27,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -134,7 +133,7 @@ private fun SessionRecordsScreen(
                     .fillMaxWidth(),
             ) {
                 Text(
-                    text = "Private notes and follow-up care",
+                    text = "Session records",
                     style = MaterialTheme.typography.headlineSmall,
                 )
                 Text(
@@ -145,7 +144,7 @@ private fun SessionRecordsScreen(
                 )
             }
 
-            TabRow(
+            PrimaryTabRow(
                 selectedTabIndex = selectedTab,
                 containerColor = MaterialTheme.colorScheme.background,
             ) {
@@ -217,7 +216,6 @@ private fun SessionRecordsScreen(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
                 .padding(16.dp),
         )
     }
@@ -278,7 +276,7 @@ private fun RecordsTab(
             EmptyState(
                 icon = Icons.Outlined.Description,
                 title = "No completed sessions yet",
-                message = "Completed appointments will appear here so you can add a private note and public summary.",
+                message = "Completed sessions appear here so you can add notes.",
             )
         }
         return
@@ -329,7 +327,7 @@ private fun RecordsTab(
                 EmptyState(
                     icon = Icons.Outlined.Description,
                     title = "No saved records yet",
-                    message = "Saved records and their follow-up dates will appear here.",
+                    message = "Saved records appear here.",
                 )
             }
         }
@@ -352,7 +350,7 @@ private fun TriageTab(
             EmptyState(
                 icon = Icons.Outlined.Description,
                 title = "Triage board is clear",
-                message = "High-risk or follow-up-needed records will be grouped into Overdue, Due soon and Later.",
+                message = "High-risk and follow-up records appear here.",
             )
         }
         return

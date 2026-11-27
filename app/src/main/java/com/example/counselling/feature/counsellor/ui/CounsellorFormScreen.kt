@@ -121,19 +121,10 @@ private fun CounsellorFormScreen(
                         .padding(horizontal = 20.dp),
                 ) {
                     Text(
-                        text = if (state.isEdit) {
-                            "Keep the directory details current."
-                        } else {
-                            "Create the directory entry first."
-                        },
-                        style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                    Text(
                         text = "The counsellor role is assigned automatically when a matching Auth account signs up.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 14.dp),
+                        modifier = Modifier.padding(top = 8.dp, bottom = 14.dp),
                     )
 
                     AppTextField(

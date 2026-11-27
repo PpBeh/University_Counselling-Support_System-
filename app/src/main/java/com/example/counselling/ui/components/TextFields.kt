@@ -18,10 +18,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -35,9 +33,7 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -349,85 +345,5 @@ fun DatePickerField(
         ) {
             DatePicker(state = state)
         }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun TimePickerField(
-    label: String,
-    hour: Int,
-    minute: Int,
-    onTimeSelected: (hour: Int, minute: Int) -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    error: String? = null,
-    supportingText: String? = null,
-) {
-    var showDialog by remember { mutableStateOf(false) }
-    val display = DateTimeUtils.formatTime(hour, minute)
-
-    Box(modifier = modifier.fillMaxWidth()) {
-        OutlinedTextField(
-            value = display,
-            onValueChange = {},
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 56.dp),
-            enabled = enabled,
-            readOnly = true,
-            label = { Text(label) },
-            isError = error != null,
-            supportingText = when {
-                error != null -> {
-                    { Text(error, color = MaterialTheme.colorScheme.error) }
-                }
-                supportingText != null -> {
-                    { Text(supportingText) }
-                }
-                else -> null
-            },
-            trailingIcon = {
-                Icon(Icons.Outlined.Schedule, contentDescription = "Open time picker")
-            },
-            shape = MaterialTheme.shapes.medium,
-        )
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .clickable(enabled = enabled) { showDialog = true },
-        )
-    }
-
-    if (showDialog) {
-        val state = rememberTimePickerState(
-            initialHour = hour,
-            initialMinute = minute,
-            is24Hour = false,
-        )
-        AlertDialog(
-            onDismissRequest = { showDialog = false },
-            title = { Text(label) },
-            text = {
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    TimePicker(state = state)
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onTimeSelected(state.hour, state.minute)
-                        showDialog = false
-                    },
-                ) {
-                    Text("OK")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDialog = false }) {
-                    Text("Cancel")
-                }
-            },
-        )
     }
 }

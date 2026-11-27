@@ -9,15 +9,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.Email
-import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.School
 import androidx.compose.material3.MaterialTheme
@@ -147,8 +145,6 @@ private fun ProfileScreen(
                     .weight(1f)
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .imePadding()
-                    .navigationBarsPadding()
                     .padding(horizontal = 20.dp),
             ) {
                 Surface(
@@ -354,7 +350,7 @@ private fun ProfileScreen(
                 PrimaryButton(
                     text = "Sign out",
                     onClick = onSignOut,
-                    icon = Icons.Outlined.Logout,
+                    icon = Icons.AutoMirrored.Outlined.Logout,
                 )
                 Spacer(Modifier.height(28.dp))
             }
@@ -364,8 +360,6 @@ private fun ProfileScreen(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .imePadding()
                 .padding(16.dp),
         )
     }

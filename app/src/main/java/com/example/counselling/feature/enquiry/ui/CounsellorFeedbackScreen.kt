@@ -63,7 +63,7 @@ private fun CounsellorFeedbackScreen(
         AppTopBar(title = "Session feedback", onBack = onBack)
         Column(modifier = Modifier.padding(horizontal = 20.dp)) {
             Text(
-                text = "What students shared",
+                text = "Student ratings",
                 style = MaterialTheme.typography.headlineSmall,
             )
             Text(
@@ -98,7 +98,7 @@ private fun CounsellorFeedbackScreen(
                         EmptyState(
                             icon = Icons.Outlined.StarBorder,
                             title = "No feedback yet",
-                            message = "Students can rate a completed session. Their ratings will appear here.",
+                            message = "Student ratings appear here.",
                         )
                     }
                 } else {

@@ -104,7 +104,7 @@ private fun ResourceFormScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             AppTopBar(
-                title = if (state.isEdit) "Edit resource" else "Add resource",
+                title = if (state.isEdit) "Edit resource" else "New resource",
                 onBack = onBack,
             )
             when {
@@ -121,15 +121,10 @@ private fun ResourceFormScreen(
                         .padding(horizontal = 20.dp),
                 ) {
                     Text(
-                        text = if (state.isEdit) "Keep this resource current." else "Share something useful.",
-                        style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                    Text(
                         text = "Published resources are visible to students. Drafts stay with staff.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 14.dp),
+                        modifier = Modifier.padding(top = 8.dp, bottom = 14.dp),
                     )
                     AppTextField(
                         value = state.title,
@@ -239,7 +234,7 @@ private fun ResourceFormScreen(
             if (!state.isLoading && state.loadError == null) {
                 StickyBottomAction {
                     PrimaryButton(
-                        text = if (state.isEdit) "Save resource" else "Add resource",
+                        text = "Save resource",
                         onClick = {
                             focusManager.clearFocus()
                             onSave()

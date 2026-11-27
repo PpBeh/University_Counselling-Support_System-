@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -148,11 +149,11 @@ private fun RegisterScreen(
                     .padding(horizontal = 24.dp, vertical = 8.dp),
             ) {
                 Text(
-                    text = "Your details stay private.",
+                    text = "Student details",
                     style = MaterialTheme.typography.headlineSmall,
                 )
                 Text(
-                    text = "Create a student account to book counselling and use the self-help library.",
+                    text = "Book counselling and use the self-help library.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp, bottom = 18.dp),
@@ -268,7 +269,11 @@ private fun RegisterScreen(
                 Spacer(Modifier.height(16.dp))
             }
 
-            StickyBottomAction {
+            StickyBottomAction(
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .imePadding(),
+            ) {
                 PrimaryButton(
                     text = "Create my account",
                     onClick = {

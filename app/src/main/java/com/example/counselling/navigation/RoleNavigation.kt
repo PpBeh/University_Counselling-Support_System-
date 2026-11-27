@@ -5,6 +5,8 @@
 package com.example.counselling.navigation
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Forum
@@ -78,8 +80,8 @@ private fun HomeTab.toDestination(): TopLevelDestination = when (this) {
     HomeTab.RESOURCES -> TopLevelDestination(
         Routes.RESOURCES,
         label,
-        Icons.Outlined.MenuBook,
-        Icons.Filled.MenuBook,
+        Icons.AutoMirrored.Outlined.MenuBook,
+        Icons.AutoMirrored.Filled.MenuBook,
     )
     HomeTab.ENQUIRIES -> TopLevelDestination(
         Routes.ENQUIRIES,

@@ -17,8 +17,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -143,8 +141,6 @@ fun AppBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .imePadding()
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp),
         ) {
@@ -161,8 +157,10 @@ fun AppBottomSheet(
 }
 
 /**
- * Surface pinned to the bottom of the screen holding one primary action. It
- * rides above the keyboard so the action stays reachable while typing.
+ * Surface pinned to the bottom of the screen holding one primary action.
+ * Insets are supplied by the caller: screens inside the app shell already
+ * receive safeDrawing padding, while auth screens add navigation bar and IME
+ * padding themselves.
  */
 @Composable
 fun StickyBottomAction(
@@ -178,8 +176,6 @@ fun StickyBottomAction(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .imePadding()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             content = content,
         )

@@ -251,8 +251,6 @@ private fun CounsellorAvailabilityScreen(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .imePadding()
                 .padding(16.dp),
         )
     }

@@ -14,13 +14,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
@@ -189,7 +188,6 @@ private fun SelfCheckScreen(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
                 .padding(16.dp),
         )
     }
@@ -205,13 +203,13 @@ private fun IntroContent(onStart: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = "A private moment to check in.",
+            text = "Answer ten short questions.",
             style = MaterialTheme.typography.headlineSmall,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 22.dp),
         )
         Text(
-            text = "Ten short questions about the last two weeks. Your answers stay on this screen and are never saved.",
+            text = "About the last two weeks. Your answers stay on this screen and are never saved.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -321,7 +319,6 @@ private fun ResultContent(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .navigationBarsPadding()
             .padding(horizontal = 20.dp),
     ) {
         Text(
@@ -380,9 +377,9 @@ private fun ResultContent(
                 onRetry = onRetryRecommendations,
             )
             state.recommendations.isEmpty() -> EmptyState(
-                icon = Icons.Outlined.MenuBook,
+                icon = Icons.AutoMirrored.Outlined.MenuBook,
                 title = "No matching resources yet",
-                message = "You can still book a session or explore the full resource library.",
+                message = "Book a session or browse all resources.",
             )
             else -> state.recommendations.forEach { resource ->
                 ResourceRecommendation(resource = resource, onOpen = { onOpenResource(resource) })

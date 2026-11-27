@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -26,8 +25,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -179,7 +178,7 @@ private fun ResourcesScreen(
     val subtitle = if (hotlineOnly) {
         "If you are in immediate danger, contact campus security or local emergency services."
     } else {
-        "Calm, practical resources for the things students bring to counselling."
+        "Practical self-help for common student concerns."
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -254,7 +253,7 @@ private fun ResourcesScreen(
                                 .verticalScroll(rememberScrollState()),
                         ) {
                             EmptyState(
-                                icon = Icons.Outlined.MenuBook,
+                                icon = Icons.AutoMirrored.Outlined.MenuBook,
                                 title = "No resources found",
                                 message = if (state.resources.isEmpty()) {
                                     "Resources added by the counselling team will appear here."
@@ -297,7 +296,6 @@ private fun ResourcesScreen(
                 label = "resource-fab",
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .navigationBarsPadding()
                     .padding(16.dp),
             ) { extended ->
                 if (extended) {
@@ -318,7 +316,6 @@ private fun ResourcesScreen(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
                 .padding(16.dp),
         )
     }
@@ -368,7 +365,7 @@ private fun ResourceRow(
     AppListRow(
         title = resource.title,
         supportingText = "${resource.category.label} · ${resource.mediaType}",
-        leadingIcon = Icons.Outlined.MenuBook,
+        leadingIcon = Icons.AutoMirrored.Outlined.MenuBook,
         trailingContent = {
             if (canManage) {
                 StatusChip(if (resource.isPublished) "published" else "draft")

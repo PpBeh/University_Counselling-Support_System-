@@ -18,7 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -224,12 +224,12 @@ private fun StudentEnquiriesScreen(
                 item(key = "header") {
                     Column(modifier = Modifier.padding(horizontal = 20.dp)) {
                         Text(
-                            text = "A private space to ask",
+                            text = "Your enquiries",
                             style = MaterialTheme.typography.headlineSmall,
                             modifier = Modifier.padding(top = 4.dp),
                         )
                         Text(
-                            text = "Ask anonymously and keep the code, or send a linked question that appears below.",
+                            text = "Send a linked question, or ask anonymously and keep the reference code.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
@@ -329,7 +329,7 @@ private fun StudentEnquiriesScreen(
                         EmptyState(
                             icon = Icons.Outlined.Forum,
                             title = "No linked enquiries",
-                            message = "Linked questions appear here. Anonymous questions can only be checked with their code.",
+                            message = "Linked questions appear here.",
                         )
                     }
 
@@ -379,7 +379,6 @@ private fun StudentEnquiriesScreen(
             label = "enquiry-fab",
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .navigationBarsPadding()
                 .padding(16.dp),
         ) { extended ->
             if (extended) {
@@ -415,7 +414,6 @@ private fun StudentEnquiriesScreen(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
                 .padding(16.dp),
         )
     }
@@ -679,12 +677,12 @@ private fun NewEnquiryForm(
                     .padding(horizontal = 20.dp),
             ) {
                 Text(
-                    text = "Ask a private question",
+                    text = "Your question",
                     style = MaterialTheme.typography.headlineSmall,
                     modifier = Modifier.padding(top = 8.dp),
                 )
                 Text(
-                    text = "Choose whether your name is attached. Anonymous enquiries can only be checked with the reference code.",
+                    text = "Choose a category and write what you need help with. Anonymous enquiries can only be checked with the reference code.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp, bottom = 18.dp),
@@ -731,7 +729,7 @@ private fun NewEnquiryForm(
                 Spacer(Modifier.height(24.dp))
             }
 
-            StickyBottomAction {
+            StickyBottomAction(modifier = Modifier.imePadding()) {
                 PrimaryButton(
                     text = if (isSubmitting) "Sending…" else "Send question",
                     onClick = onSubmit,
@@ -744,7 +742,6 @@ private fun NewEnquiryForm(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
                 .padding(start = 16.dp, end = 16.dp, bottom = 96.dp),
         )
     }

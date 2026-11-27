@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -31,9 +30,9 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -191,7 +190,7 @@ private fun StudentAppointmentsScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             ScreenTitle(
                 title = "Your sessions",
-                subtitle = "Private, calm and at your pace.",
+                subtitle = "Your upcoming and past sessions.",
                 actions = {
                     IconButton(onClick = onRefresh) {
                         Icon(Icons.Outlined.Refresh, contentDescription = "Refresh appointments")
@@ -199,7 +198,7 @@ private fun StudentAppointmentsScreen(
                 },
             )
 
-            TabRow(
+            PrimaryTabRow(
                 selectedTabIndex = selectedTabIndex,
                 containerColor = MaterialTheme.colorScheme.background,
             ) {
@@ -263,14 +262,14 @@ private fun StudentAppointmentsScreen(
                                 },
                                 message = when (selectedTab) {
                                     StudentAppointmentTab.UPCOMING ->
-                                        "When you book a counselling session it will appear here."
+                                        "Booked sessions appear here."
                                     StudentAppointmentTab.PAST ->
-                                        "Completed sessions will collect here for your reference."
+                                        "Completed sessions appear here."
                                     StudentAppointmentTab.CANCELLED ->
-                                        "Appointments you cancel will remain listed here."
+                                        "Cancelled appointments appear here."
                                 },
                                 actionLabel = if (selectedTab == StudentAppointmentTab.UPCOMING) {
-                                    "Book a session"
+                                    "Book session"
                                 } else {
                                     null
                                 },
@@ -359,7 +358,6 @@ private fun StudentAppointmentsScreen(
             label = "book-fab",
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .navigationBarsPadding()
                 .padding(16.dp),
         ) { extended ->
             if (extended) {
@@ -381,7 +379,6 @@ private fun StudentAppointmentsScreen(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
                 .padding(16.dp),
         )
     }

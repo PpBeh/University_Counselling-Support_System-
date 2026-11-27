@@ -127,15 +127,10 @@ private fun SessionRecordFormScreen(
                         .padding(horizontal = 20.dp),
                 ) {
                     Text(
-                        text = if (state.isEdit) "Session record" else "Add a private record",
-                        style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                    Text(
                         text = "This is only available after a completed session.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+                        modifier = Modifier.padding(top = 8.dp, bottom = 12.dp),
                     )
 
                     state.appointment?.let { appointment ->
