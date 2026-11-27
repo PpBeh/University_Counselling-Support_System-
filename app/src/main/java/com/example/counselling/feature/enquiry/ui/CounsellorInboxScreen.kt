@@ -1,6 +1,9 @@
 // Module 6 | Owner: Michael
+// Counsellor enquiry inbox as status-grouped rows. Swipe reveals Reply and the
+// row sheet keeps the same action visible without a gesture.
 package com.example.counselling.feature.enquiry.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,17 +13,18 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
@@ -43,6 +47,8 @@ import com.example.counselling.feature.enquiry.domain.Enquiry
 import com.example.counselling.feature.enquiry.domain.EnquiryRepository
 import com.example.counselling.feature.enquiry.domain.EnquiryStatus
 import com.example.counselling.feature.resource.domain.ResourceRepository
+import com.example.counselling.ui.components.AppBottomSheet
+import com.example.counselling.ui.components.AppListRow
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.DropdownField
@@ -53,6 +59,9 @@ import com.example.counselling.ui.components.InfoCard
 import com.example.counselling.ui.components.LoadingShimmer
 import com.example.counselling.ui.components.SecondaryButton
 import com.example.counselling.ui.components.StatusChip
+import com.example.counselling.ui.components.StickyListHeader
+import com.example.counselling.ui.components.SwipeAction
+import com.example.counselling.ui.components.SwipeRevealRow
 import com.example.counselling.ui.components.showAppMessage
 
 @Composable
@@ -82,7 +91,7 @@ fun CounsellorInboxRoute(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun CounsellorInboxScreen(
     state: CounsellorInboxUiState,
@@ -94,6 +103,7 @@ private fun CounsellorInboxScreen(
     onOpenFeedback: () -> Unit,
 ) {
     var replyTarget by remember { mutableStateOf<Enquiry?>(null) }
+    var selectedEnquiry by remember { mutableStateOf<Enquiry?>(null) }
     val filtered = remember(state.enquiries, state.statusFilter) {
         if (state.statusFilter == "All") {
             state.enquiries
@@ -125,7 +135,7 @@ private fun CounsellorInboxScreen(
                 options = listOf("All", "Open", "Answered", "Closed"),
                 selected = state.statusFilter,
                 onSelect = onStatusFilterChange,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
             )
 
             when {
@@ -159,19 +169,45 @@ private fun CounsellorInboxScreen(
                     } else {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(
-                                start = 20.dp,
-                                end = 20.dp,
-                                bottom = 24.dp,
-                            ),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            contentPadding = PaddingValues(bottom = 24.dp),
                         ) {
-                            items(filtered, key = { it.id }) { enquiry ->
-                                InboxCard(
-                                    enquiry = enquiry,
-                                    isBusy = state.busyEnquiryId == enquiry.id,
-                                    onReply = { replyTarget = enquiry },
-                                )
+                            EnquiryStatus.entries.forEach { status ->
+                                val rows = filtered.filter { it.status == status }
+                                if (rows.isNotEmpty()) {
+                                    stickyHeader(key = "header-${status.code}") {
+                                        StickyListHeader(text = status.label)
+                                    }
+                                    items(rows, key = { it.id }) { enquiry ->
+                                        if (enquiry.canReply()) {
+                                            SwipeRevealRow(
+                                                actions = { close ->
+                                                    SwipeAction(
+                                                        label = if (enquiry.reply.isNullOrBlank()) {
+                                                            "Reply"
+                                                        } else {
+                                                            "Update"
+                                                        },
+                                                        icon = Icons.Outlined.Forum,
+                                                        onClick = {
+                                                            close()
+                                                            replyTarget = enquiry
+                                                        },
+                                                    )
+                                                },
+                                            ) {
+                                                InboxRow(
+                                                    enquiry = enquiry,
+                                                    onClick = { selectedEnquiry = enquiry },
+                                                )
+                                            }
+                                        } else {
+                                            InboxRow(
+                                                enquiry = enquiry,
+                                                onClick = { selectedEnquiry = enquiry },
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -185,6 +221,22 @@ private fun CounsellorInboxScreen(
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
                 .padding(16.dp),
+        )
+    }
+
+    selectedEnquiry?.let { enquiry ->
+        InboxDetailSheet(
+            enquiry = enquiry,
+            isBusy = state.busyEnquiryId == enquiry.id,
+            onDismiss = { selectedEnquiry = null },
+            onReply = if (enquiry.canReply()) {
+                {
+                    selectedEnquiry = null
+                    replyTarget = enquiry
+                }
+            } else {
+                null
+            },
         )
     }
 
@@ -202,68 +254,93 @@ private fun CounsellorInboxScreen(
 }
 
 @Composable
-private fun InboxCard(
+private fun InboxRow(
+    enquiry: Enquiry,
+    onClick: () -> Unit,
+) {
+    AppListRow(
+        title = if (enquiry.isAnonymous) {
+            "Anonymous student"
+        } else {
+            enquiry.studentName ?: "Student"
+        },
+        supportingText = "${enquiry.referenceCode} · ${enquiry.category.label} · " +
+            DateTimeUtils.formatDate(enquiry.createdAt),
+        leadingIcon = Icons.Outlined.Forum,
+        trailingContent = {
+            StatusChip(status = enquiry.status.code)
+        },
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun InboxDetailSheet(
     enquiry: Enquiry,
     isBusy: Boolean,
-    onReply: () -> Unit,
+    onDismiss: () -> Unit,
+    onReply: (() -> Unit)?,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    AppBottomSheet(
+        onDismissRequest = onDismiss,
+        title = if (enquiry.isAnonymous) "Anonymous enquiry" else "Student enquiry",
     ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = if (enquiry.isAnonymous) "Anonymous student" else {
-                        enquiry.studentName ?: "Student"
-                    },
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                StatusChip(enquiry.status.label)
-            }
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = "${enquiry.referenceCode} · ${enquiry.category.label} · " +
                     DateTimeUtils.formatDate(enquiry.createdAt),
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 3.dp),
+                modifier = Modifier.weight(1f),
+            )
+            StatusChip(status = enquiry.status.code)
+        }
+        Text(
+            text = enquiry.message,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+        if (!enquiry.reply.isNullOrBlank()) {
+            Text(
+                text = "Your reply",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 14.dp),
             )
             Text(
-                text = enquiry.message,
+                text = enquiry.reply,
                 style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        enquiry.recommendedResourceTitle?.let {
+            Text(
+                text = "Attached: $it",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(top = 10.dp),
             )
-            if (!enquiry.reply.isNullOrBlank()) {
-                Text(
-                    text = "Your reply",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 10.dp),
-                )
-                Text(
-                    text = enquiry.reply,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 3.dp),
-                )
-            }
-            enquiry.recommendedResourceTitle?.let {
-                Text(
-                    text = "Attached: $it",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+        }
+        if (enquiry.isAnonymous) {
+            Text(
+                text = "You cannot identify this student. Reply through the app; they can check it with their reference code.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+        }
+
+        if (onReply != null) {
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = onReply,
+                enabled = !isBusy,
+                shape = CircleShape,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
             ) {
-                TextButton(onClick = onReply, enabled = !isBusy) {
-                    Text(if (enquiry.reply.isNullOrBlank()) "Reply" else "Update reply")
-                }
+                Text(if (enquiry.reply.isNullOrBlank()) "Reply" else "Update reply")
             }
         }
     }

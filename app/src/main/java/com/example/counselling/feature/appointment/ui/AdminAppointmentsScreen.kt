@@ -1,13 +1,13 @@
 // Module 2 | Owner: Beh
-// Admin read-only oversight. There are deliberately no write actions here.
+// Admin read-only oversight. Rows open a detail sheet; there are deliberately
+// no write actions here.
 package com.example.counselling.feature.appointment.ui
 
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.counselling.core.DateTimeUtils
 import com.example.counselling.core.domain.AppointmentStatus
 import com.example.counselling.core.domain.User
 import com.example.counselling.feature.appointment.domain.Appointment
@@ -38,6 +39,7 @@ import com.example.counselling.ui.components.EmptyState
 import com.example.counselling.ui.components.ErrorState
 import com.example.counselling.ui.components.FilterChipRow
 import com.example.counselling.ui.components.LoadingShimmer
+import com.example.counselling.ui.components.StickyListHeader
 
 @Composable
 fun AdminAppointmentsRoute(
@@ -63,7 +65,7 @@ fun AdminAppointmentsRoute(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun AdminAppointmentsScreen(
     state: AppointmentsUiState,
@@ -74,6 +76,7 @@ private fun AdminAppointmentsScreen(
 ) {
     val filters = listOf("All", "Pending", "Confirmed", "Completed", "No show", "Cancelled")
     var selectedFilter by remember { mutableStateOf("All") }
+    var selectedAppointment by remember { mutableStateOf<Appointment?>(null) }
 
     val appointments = run {
         val filtered = selectedFilter.toApiStatus()?.let { status ->
@@ -98,7 +101,7 @@ private fun AdminAppointmentsScreen(
                 text = "Read-only. Administrators cannot create, edit or cancel bookings.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
             )
         }
 
@@ -106,7 +109,7 @@ private fun AdminAppointmentsScreen(
             options = filters,
             selected = selectedFilter,
             onSelect = { selectedFilter = it },
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
 
         when {
@@ -140,23 +143,34 @@ private fun AdminAppointmentsScreen(
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(
-                            start = 20.dp,
-                            end = 20.dp,
-                            bottom = 24.dp,
-                        ),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(bottom = 24.dp),
                     ) {
-                        items(appointments, key = { it.uiKey() }) { appointment ->
-                            AppointmentCard(
-                                appointment = appointment,
-                                viewer = viewer,
-                            )
-                        }
+                        appointments
+                            .groupBy { DateTimeUtils.formatDate(it.slotStart) }
+                            .forEach { (date, rows) ->
+                                stickyHeader(key = "header-$date") {
+                                    StickyListHeader(text = date)
+                                }
+                                items(rows, key = { it.uiKey() }) { appointment ->
+                                    AppointmentRow(
+                                        appointment = appointment,
+                                        viewer = viewer,
+                                        onClick = { selectedAppointment = appointment },
+                                    )
+                                }
+                            }
                     }
                 }
             }
         }
+    }
+
+    selectedAppointment?.let { appointment ->
+        AppointmentDetailSheet(
+            appointment = appointment,
+            viewer = viewer,
+            onDismiss = { selectedAppointment = null },
+        )
     }
 }
 

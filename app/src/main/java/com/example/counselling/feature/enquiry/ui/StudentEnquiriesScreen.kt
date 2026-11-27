@@ -1,9 +1,12 @@
 // Module 6 | Owner: Michael
-// Linked enquiries + anonymous reference-code lookup/withdrawal.
+// Linked enquiries + anonymous reference-code lookup/withdrawal. Rows are
+// grouped by status, swipe reveals withdraw, and the sheet keeps it visible.
 package com.example.counselling.feature.enquiry.ui
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,27 +16,37 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,6 +66,8 @@ import com.example.counselling.feature.enquiry.domain.Enquiry
 import com.example.counselling.feature.enquiry.domain.EnquiryLookup
 import com.example.counselling.feature.enquiry.domain.EnquiryRepository
 import com.example.counselling.feature.enquiry.domain.EnquiryStatus
+import com.example.counselling.ui.components.AppBottomSheet
+import com.example.counselling.ui.components.AppListRow
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.ConfirmDialog
@@ -62,7 +77,11 @@ import com.example.counselling.ui.components.InfoCard
 import com.example.counselling.ui.components.LoadingShimmer
 import com.example.counselling.ui.components.PrimaryButton
 import com.example.counselling.ui.components.SecondaryButton
+import com.example.counselling.ui.components.SectionLabel
 import com.example.counselling.ui.components.StatusChip
+import com.example.counselling.ui.components.StickyListHeader
+import com.example.counselling.ui.components.SwipeAction
+import com.example.counselling.ui.components.SwipeRevealRow
 import com.example.counselling.ui.components.showAppMessage
 import kotlinx.coroutines.launch
 
@@ -96,7 +115,7 @@ fun StudentEnquiriesRoute(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun StudentEnquiriesScreen(
     state: StudentEnquiriesUiState,
@@ -120,8 +139,15 @@ private fun StudentEnquiriesScreen(
     var categoryError by remember { mutableStateOf<String?>(null) }
     var messageError by remember { mutableStateOf<String?>(null) }
     var lookupCode by remember { mutableStateOf("") }
+    var selectedEnquiry by remember { mutableStateOf<Enquiry?>(null) }
     var linkedToWithdraw by remember { mutableStateOf<Enquiry?>(null) }
     var codeToWithdraw by remember { mutableStateOf<String?>(null) }
+    val listState = rememberLazyListState()
+    val showExtendedFab by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 24
+        }
+    }
 
     fun copyCode(code: String) {
         val clipboard = context.getSystemService(ClipboardManager::class.java)
@@ -140,22 +166,18 @@ private fun StudentEnquiriesScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            PullToRefreshBox(
-                isRefreshing = state.isRefreshing,
-                onRefresh = onRefresh,
+        PullToRefreshBox(
+            isRefreshing = state.isRefreshing,
+            onRefresh = onRefresh,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 96.dp),
             ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        start = 20.dp,
-                        end = 20.dp,
-                        bottom = 24.dp,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    item {
+                item(key = "header") {
+                    Column(modifier = Modifier.padding(horizontal = 20.dp)) {
                         Text(
                             text = "A private space to ask",
                             style = MaterialTheme.typography.headlineSmall,
@@ -167,82 +189,179 @@ private fun StudentEnquiriesScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
                         )
-                        PrimaryButton(
-                            text = "Ask a question",
-                            onClick = {
-                                category = ""
-                                message = ""
-                                anonymous = false
-                                categoryError = null
-                                messageError = null
-                                showForm = true
-                            },
-                            icon = Icons.Outlined.Forum,
-                        )
-                        Spacer(Modifier.height(8.dp))
                         SecondaryButton(
                             text = "Rate a completed session",
                             onClick = onOpenFeedback,
                         )
-                        Spacer(Modifier.height(14.dp))
                     }
+                }
 
-                    item {
-                        LookupCard(
-                            code = lookupCode,
-                            onCodeChange = { lookupCode = it.uppercase() },
-                            onLookup = { onLookup(lookupCode) },
-                            onClear = {
-                                lookupCode = ""
-                                onClearLookup()
-                            },
-                            isLoading = state.isLookingUp,
-                            error = state.lookupError,
-                            result = state.lookupResult,
-                            onWithdraw = { codeToWithdraw = it },
-                            onCopy = ::copyCode,
-                        )
-                    }
-
-                    item {
+                item(key = "lookup") {
+                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
+                        SectionLabel(title = "Check a reply by code")
                         Text(
-                            text = "My linked enquiries",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(top = 8.dp),
+                            text = "No sign-in identity is shown for anonymous enquiries.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
+                        )
+                        AppTextField(
+                            value = lookupCode,
+                            onValueChange = { lookupCode = it.uppercase() },
+                            label = "Reference code",
+                            supportingText = "For example ENQ-7K3P9Q",
+                        )
+                        if (state.lookupError != null) {
+                            Text(
+                                text = state.lookupError,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = {
+                                    lookupCode = ""
+                                    onClearLookup()
+                                },
+                                enabled = !state.isLookingUp,
+                                shape = CircleShape,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp),
+                            ) {
+                                Text("Clear")
+                            }
+                            Button(
+                                onClick = { onLookup(lookupCode) },
+                                enabled = lookupCode.isNotBlank() && !state.isLookingUp,
+                                shape = CircleShape,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp),
+                            ) {
+                                Text(if (state.isLookingUp) "Checking…" else "Check reply")
+                            }
+                        }
+                        state.lookupResult?.let { result ->
+                            LookupResultSection(
+                                result = result,
+                                onWithdraw = { codeToWithdraw = it },
+                                onCopy = ::copyCode,
+                            )
+                        }
+                    }
+                }
+
+                item(key = "linked-title") {
+                    SectionLabel(
+                        title = "My linked enquiries",
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                    )
+                }
+
+                when {
+                    state.isLoading -> item(key = "loading") {
+                        LoadingShimmer(
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                            rows = 3,
                         )
                     }
 
-                    when {
-                        state.isLoading -> item {
-                            LoadingShimmer(rows = 3)
-                        }
+                    state.error != null && state.enquiries.isEmpty() -> item(key = "error") {
+                        InfoCard(
+                            title = "Could not load enquiries",
+                            body = state.error,
+                            actionLabel = "Try again",
+                            onAction = onRetry,
+                            modifier = Modifier.padding(horizontal = 20.dp),
+                        )
+                    }
 
-                        state.error != null && state.enquiries.isEmpty() -> item {
-                            InfoCard(
-                                title = "Could not load enquiries",
-                                body = state.error,
-                                actionLabel = "Try again",
-                                onAction = onRetry,
-                            )
-                        }
+                    state.enquiries.isEmpty() -> item(key = "empty") {
+                        EmptyState(
+                            icon = Icons.Outlined.Forum,
+                            title = "No linked enquiries",
+                            message = "Linked questions appear here. Anonymous questions can only be checked with their code.",
+                        )
+                    }
 
-                        state.enquiries.isEmpty() -> item {
-                            EmptyState(
-                                icon = Icons.Outlined.Forum,
-                                title = "No linked enquiries",
-                                message = "Linked questions appear here. Anonymous questions can only be checked with their code.",
-                            )
-                        }
-
-                        else -> items(state.enquiries, key = { it.id }) { enquiry ->
-                            LinkedEnquiryCard(
-                                enquiry = enquiry,
-                                isBusy = state.busyEnquiryId == enquiry.id,
-                                onCopy = { copyCode(enquiry.referenceCode) },
-                                onWithdraw = { linkedToWithdraw = enquiry },
-                            )
+                    else -> {
+                        EnquiryStatus.entries.forEach { status ->
+                            val rows = state.enquiries.filter { it.status == status }
+                            if (rows.isNotEmpty()) {
+                                stickyHeader(key = "header-${status.code}") {
+                                    StickyListHeader(text = status.label)
+                                }
+                                items(rows, key = { it.id }) { enquiry ->
+                                    if (enquiry.status == EnquiryStatus.OPEN) {
+                                        SwipeRevealRow(
+                                            actions = { close ->
+                                                SwipeAction(
+                                                    label = "Withdraw",
+                                                    icon = Icons.Outlined.Delete,
+                                                    destructive = true,
+                                                    onClick = {
+                                                        close()
+                                                        linkedToWithdraw = enquiry
+                                                    },
+                                                )
+                                            },
+                                        ) {
+                                            EnquiryRow(
+                                                enquiry = enquiry,
+                                                onClick = { selectedEnquiry = enquiry },
+                                            )
+                                        }
+                                    } else {
+                                        EnquiryRow(
+                                            enquiry = enquiry,
+                                            onClick = { selectedEnquiry = enquiry },
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
+                }
+            }
+        }
+
+        AnimatedContent(
+            targetState = showExtendedFab,
+            label = "enquiry-fab",
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .navigationBarsPadding()
+                .padding(16.dp),
+        ) { extended ->
+            if (extended) {
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        category = ""
+                        message = ""
+                        anonymous = false
+                        categoryError = null
+                        messageError = null
+                        showForm = true
+                    },
+                    icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
+                    text = { Text("New enquiry") },
+                )
+            } else {
+                FloatingActionButton(
+                    onClick = {
+                        category = ""
+                        message = ""
+                        anonymous = false
+                        categoryError = null
+                        messageError = null
+                        showForm = true
+                    },
+                ) {
+                    Icon(Icons.Outlined.Add, contentDescription = "New enquiry")
                 }
             }
         }
@@ -253,6 +372,26 @@ private fun StudentEnquiriesScreen(
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
                 .padding(16.dp),
+        )
+    }
+
+    selectedEnquiry?.let { enquiry ->
+        EnquiryDetailSheet(
+            enquiry = enquiry,
+            isBusy = state.busyEnquiryId == enquiry.id,
+            onDismiss = { selectedEnquiry = null },
+            onCopy = {
+                selectedEnquiry = null
+                copyCode(enquiry.referenceCode)
+            },
+            onWithdraw = if (enquiry.status == EnquiryStatus.OPEN) {
+                {
+                    selectedEnquiry = null
+                    linkedToWithdraw = enquiry
+                }
+            } else {
+                null
+            },
         )
     }
 
@@ -364,7 +503,7 @@ private fun StudentEnquiriesScreen(
             },
             dismissButton = {
                 TextButton(onClick = { copyCode(code) }) {
-                    androidx.compose.material3.Icon(
+                    Icon(
                         imageVector = Icons.Outlined.ContentCopy,
                         contentDescription = null,
                     )
@@ -397,83 +536,109 @@ private fun StudentEnquiriesScreen(
 }
 
 @Composable
-private fun LookupCard(
-    code: String,
-    onCodeChange: (String) -> Unit,
-    onLookup: () -> Unit,
-    onClear: () -> Unit,
-    isLoading: Boolean,
-    error: String?,
-    result: EnquiryLookup?,
-    onWithdraw: (String) -> Unit,
-    onCopy: (String) -> Unit,
+private fun EnquiryRow(
+    enquiry: Enquiry,
+    onClick: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    AppListRow(
+        title = enquiry.referenceCode,
+        supportingText = "${enquiry.category.label} · " +
+            DateTimeUtils.formatDate(enquiry.createdAt),
+        leadingIcon = Icons.Outlined.Forum,
+        trailingContent = {
+            StatusChip(status = enquiry.status.code)
+        },
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun EnquiryDetailSheet(
+    enquiry: Enquiry,
+    isBusy: Boolean,
+    onDismiss: () -> Unit,
+    onCopy: () -> Unit,
+    onWithdraw: (() -> Unit)?,
+) {
+    AppBottomSheet(
+        onDismissRequest = onDismiss,
+        title = enquiry.referenceCode,
     ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Text("Check a reply by code", style = MaterialTheme.typography.titleMedium)
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "No sign-in identity is shown for anonymous enquiries.",
-                style = MaterialTheme.typography.bodySmall,
+                text = "${enquiry.category.label} · " +
+                    DateTimeUtils.formatDate(enquiry.createdAt),
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
+                modifier = Modifier.weight(1f),
             )
-            AppTextField(
-                value = code,
-                onValueChange = onCodeChange,
-                label = "Reference code",
-                supportingText = "For example ENQ-7K3P9Q",
+            StatusChip(status = enquiry.status.code)
+        }
+        Text(
+            text = enquiry.message,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+        if (!enquiry.reply.isNullOrBlank()) {
+            Text(
+                text = "Reply",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 14.dp),
             )
-            if (error != null) {
-                Text(
-                    text = error,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
+            Text(
+                text = enquiry.reply,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        enquiry.recommendedResourceTitle?.let {
+            Text(
+                text = "Attached resource: $it",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 10.dp),
+            )
+        }
+
+        Spacer(Modifier.height(16.dp))
+        Button(
+            onClick = onCopy,
+            shape = CircleShape,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp),
+        ) {
+            Text("Copy code")
+        }
+        if (onWithdraw != null) {
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SecondaryButton(
-                    text = "Clear",
-                    onClick = onClear,
-                    modifier = Modifier.weight(1f),
-                    enabled = !isLoading,
-                )
-                PrimaryButton(
-                    text = if (isLoading) "Checking…" else "Check reply",
-                    onClick = onLookup,
-                    modifier = Modifier.weight(1f),
-                    enabled = code.isNotBlank() && !isLoading,
-                )
-            }
-            result?.let {
-                Spacer(Modifier.height(12.dp))
-                LookupResultCard(
-                    result = it,
-                    onWithdraw = { onWithdraw(it.referenceCode) },
-                    onCopy = { onCopy(it.referenceCode) },
-                )
+            OutlinedButton(
+                onClick = onWithdraw,
+                enabled = !isBusy,
+                shape = CircleShape,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+            ) {
+                Text("Withdraw enquiry", color = MaterialTheme.colorScheme.error)
             }
         }
     }
 }
 
 @Composable
-private fun LookupResultCard(
+private fun LookupResultSection(
     result: EnquiryLookup,
-    onWithdraw: () -> Unit,
-    onCopy: () -> Unit,
+    onWithdraw: (String) -> Unit,
+    onCopy: (String) -> Unit,
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    Surface(
         shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp),
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -482,7 +647,7 @@ private fun LookupResultCard(
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.weight(1f),
                 )
-                StatusChip(result.status.label)
+                StatusChip(result.status.code)
             }
             Text(
                 text = "${result.category.label} · ${DateTimeUtils.formatDate(result.createdAt)}",
@@ -514,75 +679,9 @@ private fun LookupResultCard(
                 )
             }
             Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = onCopy) { Text("Copy code") }
+                TextButton(onClick = { onCopy(result.referenceCode) }) { Text("Copy code") }
                 if (result.status == EnquiryStatus.OPEN) {
-                    TextButton(onClick = onWithdraw) {
-                        Text("Withdraw", color = MaterialTheme.colorScheme.error)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LinkedEnquiryCard(
-    enquiry: Enquiry,
-    isBusy: Boolean,
-    onCopy: () -> Unit,
-    onWithdraw: () -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = enquiry.referenceCode,
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f),
-                )
-                StatusChip(enquiry.status.label)
-            }
-            Text(
-                text = "${enquiry.category.label} · ${DateTimeUtils.formatDate(enquiry.createdAt)}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 3.dp),
-            )
-            Text(
-                text = enquiry.message,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 8.dp),
-            )
-            if (!enquiry.reply.isNullOrBlank()) {
-                Text(
-                    text = "Reply",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 10.dp),
-                )
-                Text(
-                    text = enquiry.reply,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 3.dp),
-                )
-            }
-            enquiry.recommendedResourceTitle?.let {
-                Text(
-                    text = "Attached resource: $it",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-            }
-            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = onCopy) { Text("Copy code") }
-                if (enquiry.status == EnquiryStatus.OPEN) {
-                    TextButton(onClick = onWithdraw, enabled = !isBusy) {
+                    TextButton(onClick = { onWithdraw(result.referenceCode) }) {
                         Text("Withdraw", color = MaterialTheme.colorScheme.error)
                     }
                 }

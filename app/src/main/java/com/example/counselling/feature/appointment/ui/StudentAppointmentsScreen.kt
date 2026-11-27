@@ -1,7 +1,10 @@
 // Module 2 | Owner: Beh
-// Student tabs: Upcoming / Past / Cancelled, with status chips and safe actions.
+// Student tabs: Upcoming / Past / Cancelled. Rows are grouped by date, the
+// primary booking action is a FAB and every row opens an action sheet.
 package com.example.counselling.feature.appointment.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,13 +18,17 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -33,6 +40,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -59,9 +67,11 @@ import com.example.counselling.ui.components.EmptyState
 import com.example.counselling.ui.components.ErrorState
 import com.example.counselling.ui.components.FilterChipRow
 import com.example.counselling.ui.components.LoadingShimmer
-import com.example.counselling.ui.components.PrimaryButton
 import com.example.counselling.ui.components.ScreenTitle
 import com.example.counselling.ui.components.StarRating
+import com.example.counselling.ui.components.StickyListHeader
+import com.example.counselling.ui.components.SwipeAction
+import com.example.counselling.ui.components.SwipeRevealRow
 import com.example.counselling.ui.components.showAppMessage
 
 private enum class StudentAppointmentTab(val label: String) {
@@ -114,7 +124,7 @@ fun StudentAppointmentsRoute(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun StudentAppointmentsScreen(
     state: AppointmentsUiState,
@@ -133,8 +143,15 @@ private fun StudentAppointmentsScreen(
     var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
     var selectedStatusLabel by rememberSaveable { mutableStateOf("All") }
     var appointmentToCancel by remember { mutableStateOf<Appointment?>(null) }
+    var selectedAppointment by remember { mutableStateOf<Appointment?>(null) }
     var feedbackTarget by remember { mutableStateOf<Appointment?>(null) }
     var feedbackToDelete by remember { mutableStateOf<AppointmentFeedbackUi?>(null) }
+    val listState = rememberLazyListState()
+    val showExtendedFab by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 24
+        }
+    }
 
     val tabs = StudentAppointmentTab.entries
     val selectedTab = tabs[selectedTabIndex]
@@ -172,7 +189,7 @@ private fun StudentAppointmentsScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             ScreenTitle(
-                title = "Your counselling sessions",
+                title = "Your sessions",
                 subtitle = "Private, calm and at your pace.",
                 actions = {
                     IconButton(onClick = onRefresh) {
@@ -180,19 +197,6 @@ private fun StudentAppointmentsScreen(
                     }
                 },
             )
-
-            Column(
-                modifier = Modifier
-                    .padding(horizontal = 20.dp)
-                    .fillMaxWidth(),
-            ) {
-                PrimaryButton(
-                    text = "Book a session",
-                    onClick = onBook,
-                    icon = Icons.Outlined.CalendarMonth,
-                )
-                Spacer(Modifier.height(14.dp))
-            }
 
             TabRow(
                 selectedTabIndex = selectedTabIndex,
@@ -211,14 +215,14 @@ private fun StudentAppointmentsScreen(
                 options = chipOptions,
                 selected = selectedStatusLabel,
                 onSelect = { selectedStatusLabel = it },
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
             )
 
             if (selectedTab == StudentAppointmentTab.PAST) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp),
+                        .padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.End,
                 ) {
                     TextButton(onClick = onOpenSummaries) {
@@ -278,74 +282,96 @@ private fun StudentAppointmentsScreen(
                         }
                     } else {
                         LazyColumn(
+                            state = listState,
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(
-                                start = 20.dp,
-                                end = 20.dp,
-                                bottom = 24.dp,
-                            ),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            contentPadding = PaddingValues(bottom = 96.dp),
                         ) {
-                            items(
-                                appointments,
-                                key = { appointment ->
-                                    val feedback = state.feedback[appointment.id]
-                                    "${appointment.uiKey()}:${feedback?.rating}:${feedback?.comment}"
-                                },
-                            ) { appointment ->
-                                val canChange = appointment.status in setOf(
-                                    AppointmentStatus.Pending,
-                                    AppointmentStatus.Confirmed,
-                                )
-                                val existingFeedback = state.feedback[appointment.id]
-                                AppointmentCard(
-                                    appointment = appointment,
-                                    viewer = viewer,
-                                    isBusy = state.isMutating ||
-                                        state.isSubmittingFeedback ||
-                                        state.deletingFeedbackId != null,
-                                    onReschedule = if (
-                                        canChange &&
-                                        DateTimeUtils.canReschedule(appointment.slotStart)
-                                    ) {
-                                        { onReschedule(appointment.id) }
-                                    } else {
-                                        null
-                                    },
-                                    onCancel = if (canChange) {
-                                        { appointmentToCancel = appointment }
-                                    } else {
-                                        null
-                                    },
-                                    onConfirm = if (
-                                        appointment.canConfirmFollowUp(viewer)
-                                    ) {
-                                        { onConfirmFollowUp(appointment.id) }
-                                    } else {
-                                        null
-                                    },
-                                    notice = if (
-                                        existingFeedback != null &&
-                                        appointment.status == AppointmentStatus.Completed
-                                    ) {
-                                        null
-                                    } else {
-                                        appointment.noticeFor(viewer)
-                                    },
-                                    onFeedback = if (appointment.status == AppointmentStatus.Completed) {
-                                        { feedbackTarget = appointment }
-                                    } else {
-                                        null
-                                    },
-                                    feedbackRating = existingFeedback?.rating,
-                                    feedbackComment = existingFeedback?.comment,
-                                    onRemoveFeedback = existingFeedback?.let { feedback ->
-                                        { feedbackToDelete = feedback }
-                                    },
-                                )
-                            }
+                            appointments
+                                .groupBy { DateTimeUtils.formatDate(it.slotStart) }
+                                .forEach { (date, rows) ->
+                                    stickyHeader(key = "header-$date") {
+                                        StickyListHeader(text = date)
+                                    }
+                                    items(
+                                        rows,
+                                        key = { appointment ->
+                                            val feedback = state.feedback[appointment.id]
+                                            "${appointment.uiKey()}:${feedback?.rating}:${feedback?.comment}"
+                                        },
+                                    ) { appointment ->
+                                        val canChange = appointment.status in setOf(
+                                            AppointmentStatus.Pending,
+                                            AppointmentStatus.Confirmed,
+                                        )
+                                        val canReschedule = canChange &&
+                                            DateTimeUtils.canReschedule(appointment.slotStart)
+                                        val existingFeedback = state.feedback[appointment.id]
+
+                                        if (canChange) {
+                                            SwipeRevealRow(
+                                                revealWidth = if (canReschedule) 184.dp else 96.dp,
+                                                actions = { close ->
+                                                    if (canReschedule) {
+                                                        SwipeAction(
+                                                            label = "Reschedule",
+                                                            icon = Icons.Outlined.CalendarMonth,
+                                                            onClick = {
+                                                                close()
+                                                                onReschedule(appointment.id)
+                                                            },
+                                                        )
+                                                    }
+                                                    SwipeAction(
+                                                        label = "Cancel",
+                                                        icon = Icons.Outlined.Close,
+                                                        destructive = true,
+                                                        onClick = {
+                                                            close()
+                                                            appointmentToCancel = appointment
+                                                        },
+                                                    )
+                                                },
+                                            ) {
+                                                AppointmentRow(
+                                                    appointment = appointment,
+                                                    viewer = viewer,
+                                                    onClick = { selectedAppointment = appointment },
+                                                )
+                                            }
+                                        } else {
+                                            AppointmentRow(
+                                                appointment = appointment,
+                                                viewer = viewer,
+                                                onClick = { selectedAppointment = appointment },
+                                            )
+                                        }
+                                    }
+                                }
                         }
                     }
+                }
+            }
+        }
+
+        AnimatedContent(
+            targetState = showExtendedFab,
+            label = "book-fab",
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .navigationBarsPadding()
+                .padding(16.dp),
+        ) { extended ->
+            if (extended) {
+                ExtendedFloatingActionButton(
+                    onClick = onBook,
+                    icon = {
+                        Icon(Icons.Outlined.CalendarMonth, contentDescription = null)
+                    },
+                    text = { Text("Book session") },
+                )
+            } else {
+                FloatingActionButton(onClick = onBook) {
+                    Icon(Icons.Outlined.CalendarMonth, contentDescription = "Book session")
                 }
             }
         }
@@ -356,6 +382,66 @@ private fun StudentAppointmentsScreen(
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
                 .padding(16.dp),
+        )
+    }
+
+    selectedAppointment?.let { appointment ->
+        val canChange = appointment.status in setOf(
+            AppointmentStatus.Pending,
+            AppointmentStatus.Confirmed,
+        )
+        val existingFeedback = state.feedback[appointment.id]
+        AppointmentDetailSheet(
+            appointment = appointment,
+            viewer = viewer,
+            onDismiss = { selectedAppointment = null },
+            isBusy = state.isMutating ||
+                state.isSubmittingFeedback ||
+                state.deletingFeedbackId != null,
+            onReschedule = if (
+                canChange && DateTimeUtils.canReschedule(appointment.slotStart)
+            ) {
+                {
+                    selectedAppointment = null
+                    onReschedule(appointment.id)
+                }
+            } else {
+                null
+            },
+            onCancel = if (canChange) {
+                {
+                    selectedAppointment = null
+                    appointmentToCancel = appointment
+                }
+            } else {
+                null
+            },
+            cancelLabel = "Cancel appointment",
+            onConfirm = if (appointment.canConfirmFollowUp(viewer)) {
+                {
+                    selectedAppointment = null
+                    onConfirmFollowUp(appointment.id)
+                }
+            } else {
+                null
+            },
+            onFeedback = if (appointment.status == AppointmentStatus.Completed) {
+                {
+                    selectedAppointment = null
+                    feedbackTarget = appointment
+                }
+            } else {
+                null
+            },
+            feedbackRating = existingFeedback?.rating,
+            feedbackComment = existingFeedback?.comment,
+            onRemoveFeedback = existingFeedback?.let { feedback ->
+                {
+                    selectedAppointment = null
+                    feedbackToDelete = feedback
+                }
+            },
+            notice = appointment.noticeFor(viewer),
         )
     }
 

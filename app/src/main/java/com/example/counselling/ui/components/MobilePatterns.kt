@@ -3,17 +3,23 @@
 // rows, bottom sheets, pinned primary actions and plain section labels.
 package com.example.counselling.ui.components
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,11 +34,19 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 /**
  * Edge-to-edge list row: full-width ripple, 64dp minimum height and an inset
@@ -195,6 +209,137 @@ fun SectionLabel(
             TextButton(onClick = onAction) {
                 Text(actionLabel)
             }
+        }
+    }
+}
+
+/**
+ * Opaque section header for `LazyColumn.stickyHeader`. Keeps scrolled rows from
+ * showing through while the label stays pinned.
+ */
+@Composable
+fun StickyListHeader(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 6.dp),
+        )
+    }
+}
+
+/**
+ * Drag-to-reveal row. The content stays in front and the action strip sits
+ * behind it on the trailing edge. A visible action always remains in the
+ * row's detail sheet, so gestures are never the only way to act.
+ */
+@Composable
+fun SwipeRevealRow(
+    modifier: Modifier = Modifier,
+    revealWidth: Dp = 96.dp,
+    actions: @Composable RowScope.(close: () -> Unit) -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val revealPx = with(LocalDensity.current) { revealWidth.toPx() }
+    val offset = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    val close = {
+        scope.launch { offset.animateTo(0f) }
+        Unit
+    }
+
+    Box(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .matchParentSize()
+                .padding(end = 4.dp),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            actions(close)
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .offset { IntOffset(offset.value.roundToInt(), 0) }
+                .background(MaterialTheme.colorScheme.background)
+                .pointerInput(revealPx) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            scope.launch {
+                                offset.animateTo(
+                                    if (offset.value < -revealPx / 2f) -revealPx else 0f,
+                                )
+                            }
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            scope.launch {
+                                offset.snapTo(
+                                    (offset.value + dragAmount).coerceIn(-revealPx, 0f),
+                                )
+                            }
+                        },
+                    )
+                },
+        ) {
+            content()
+        }
+    }
+}
+
+/**
+ * Single square action shown behind a [SwipeRevealRow].
+ */
+@Composable
+fun RowScope.SwipeAction(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    destructive: Boolean = false,
+) {
+    val container = if (destructive) {
+        MaterialTheme.colorScheme.errorContainer
+    } else {
+        MaterialTheme.colorScheme.primaryContainer
+    }
+    val content = if (destructive) {
+        MaterialTheme.colorScheme.onErrorContainer
+    } else {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    }
+    Surface(
+        onClick = onClick,
+        modifier = modifier
+            .width(88.dp)
+            .fillMaxHeight(),
+        color = container,
+        contentColor = content,
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(top = 4.dp),
+            )
         }
     }
 }

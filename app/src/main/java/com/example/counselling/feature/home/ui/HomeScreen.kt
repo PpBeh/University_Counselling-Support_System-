@@ -139,12 +139,16 @@ private fun StudentHome(
     appointmentError: String?,
     onRetryAppointments: () -> Unit,
 ) {
-    val nextAppointment = appointments
+    val now = Instant.now()
+    val upcomingSessions = appointments
         .filter {
             it.status in setOf(AppointmentStatus.Pending, AppointmentStatus.Confirmed) &&
-                it.slot.start.isAfter(Instant.now())
+                it.slot.start.isAfter(now)
         }
-        .minByOrNull { it.slot.start }
+        .sortedBy { it.slot.start }
+    val nextAppointment = upcomingSessions.firstOrNull()
+    val laterSessions = upcomingSessions.drop(1).take(3)
+    val completedCount = appointments.count { it.status == AppointmentStatus.Completed }
 
     Column(modifier = Modifier.fillMaxWidth()) {
         when {
@@ -208,6 +212,58 @@ private fun StudentHome(
         UrgentHelpRow(
             onClick = { onNavigate(Routes.RESOURCES_HOTLINE) },
             modifier = Modifier.padding(horizontal = 20.dp),
+        )
+
+        if (laterSessions.isNotEmpty()) {
+            Spacer(Modifier.height(20.dp))
+            SectionLabel(
+                title = "Coming up",
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            laterSessions.forEach { session ->
+                AppListRow(
+                    title = session.counsellorName,
+                    supportingText = "${sessionTimeLabel(session.slot.start)} · " +
+                        session.concern.label,
+                    leadingIcon = Icons.Outlined.CalendarMonth,
+                    trailingContent = {
+                        StatusChip(status = session.status.wireValue)
+                    },
+                    onClick = { onNavigate(Routes.STUDENT_APPOINTMENTS) },
+                )
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+        SectionLabel(
+            title = "More",
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+        AppListRow(
+            title = "Session history",
+            supportingText = if (completedCount == 0) {
+                "Completed sessions will appear here"
+            } else {
+                "$completedCount completed session${if (completedCount == 1) "" else "s"}"
+            },
+            leadingIcon = Icons.Outlined.EventNote,
+            trailingContent = { Chevron() },
+            onClick = { onNavigate(Routes.STUDENT_APPOINTMENTS) },
+        )
+        AppListRow(
+            title = "Session summaries",
+            supportingText = "Notes shared by your counsellor",
+            leadingIcon = Icons.Outlined.Description,
+            trailingContent = { Chevron() },
+            onClick = { onNavigate(Routes.STUDENT_SUMMARIES) },
+        )
+        AppListRow(
+            title = "Your feedback",
+            supportingText = "Rate a completed session",
+            leadingIcon = Icons.Outlined.FavoriteBorder,
+            trailingContent = { Chevron() },
+            onClick = { onNavigate(Routes.STUDENT_FEEDBACK) },
+            showDivider = false,
         )
     }
 }
@@ -374,6 +430,14 @@ private fun CounsellorHome(
                 DateTimeUtils.localDate(it.slotStart) == today
         }
         .sortedBy { it.slot.start }
+    val upcomingSessions = appointments
+        .filter {
+            it.status in setOf(AppointmentStatus.Pending, AppointmentStatus.Confirmed) &&
+                DateTimeUtils.localDate(it.slotStart) != today &&
+                it.slot.start.isAfter(Instant.now())
+        }
+        .sortedBy { it.slot.start }
+        .take(3)
 
     Column(modifier = Modifier.fillMaxWidth()) {
         SectionLabel(
@@ -477,6 +541,54 @@ private fun CounsellorHome(
                 )
             },
             onClick = { onNavigate(Routes.COUNSELLOR_RECORDS) },
+            showDivider = upcomingSessions.isEmpty(),
+        )
+
+        if (upcomingSessions.isNotEmpty()) {
+            Spacer(Modifier.height(20.dp))
+            SectionLabel(
+                title = "Upcoming",
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            upcomingSessions.forEach { session ->
+                AppListRow(
+                    title = session.studentName,
+                    supportingText = "${sessionTimeLabel(session.slot.start)} · " +
+                        session.concern.label,
+                    leadingIcon = Icons.Outlined.CalendarMonth,
+                    trailingContent = {
+                        StatusChip(status = session.status.wireValue)
+                    },
+                    onClick = { onNavigate(Routes.COUNSELLOR_SCHEDULE) },
+                )
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+        SectionLabel(
+            title = "Manage",
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+        AppListRow(
+            title = "My availability",
+            supportingText = "Open and close bookable slots",
+            leadingIcon = Icons.Outlined.CalendarMonth,
+            trailingContent = { Chevron() },
+            onClick = { onNavigate(Routes.MY_AVAILABILITY) },
+        )
+        AppListRow(
+            title = "Student directory",
+            supportingText = "Find a student profile",
+            leadingIcon = Icons.Outlined.School,
+            trailingContent = { Chevron() },
+            onClick = { onNavigate(Routes.STUDENT_DIRECTORY) },
+        )
+        AppListRow(
+            title = "Session feedback",
+            supportingText = "Read student ratings",
+            leadingIcon = Icons.Outlined.FavoriteBorder,
+            trailingContent = { Chevron() },
+            onClick = { onNavigate(Routes.COUNSELLOR_FEEDBACK) },
             showDivider = false,
         )
     }
@@ -580,6 +692,13 @@ private fun AdminHome(
             leadingIcon = Icons.Outlined.MenuBook,
             trailingContent = { Chevron() },
             onClick = { onNavigate(Routes.RESOURCES) },
+        )
+        AppListRow(
+            title = "Session feedback",
+            supportingText = "Read student ratings",
+            leadingIcon = Icons.Outlined.FavoriteBorder,
+            trailingContent = { Chevron() },
+            onClick = { onNavigate(Routes.COUNSELLOR_FEEDBACK) },
         )
         AppListRow(
             title = "All appointments",

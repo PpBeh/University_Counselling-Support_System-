@@ -1,49 +1,48 @@
 // Module 1 | Owner: Beh
-// Counsellor/admin student search. Only staff-permitted profile fields are shown.
+// Counsellor/admin student search. Only staff-permitted profile fields are
+// shown; rows are grouped by initial and search expands from the title.
 package com.example.counselling.feature.student.ui
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.domain.Student
 import com.example.counselling.feature.student.domain.StudentRepository
+import com.example.counselling.ui.components.AppListRow
 import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.EmptyState
 import com.example.counselling.ui.components.ErrorState
 import com.example.counselling.ui.components.LoadingShimmer
 import com.example.counselling.ui.components.ScreenTitle
+import com.example.counselling.ui.components.StickyListHeader
 import com.example.counselling.ui.components.UserAvatar
 
 @Composable
@@ -66,7 +65,7 @@ fun StudentListRoute(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun StudentListScreen(
     state: StudentListUiState,
@@ -76,6 +75,7 @@ private fun StudentListScreen(
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
 ) {
+    var showSearch by remember { mutableStateOf(false) }
     val filtered = remember(state.students, state.query) {
         val search = state.query.trim()
         if (search.isBlank()) {
@@ -90,19 +90,68 @@ private fun StudentListScreen(
 
     Column(modifier = Modifier.fillMaxSize()) {
         if (onBack != null) {
-            AppTopBar(title = "Student directory", onBack = onBack)
+            AppTopBar(
+                title = "Student directory",
+                onBack = onBack,
+                actions = {
+                    IconButton(
+                        onClick = {
+                            showSearch = !showSearch
+                            if (!showSearch) onQueryChange("")
+                        },
+                    ) {
+                        Icon(
+                            imageVector = if (showSearch) {
+                                Icons.Outlined.Close
+                            } else {
+                                Icons.Outlined.Search
+                            },
+                            contentDescription = if (showSearch) {
+                                "Close search"
+                            } else {
+                                "Search students"
+                            },
+                        )
+                    }
+                },
+            )
         } else {
-            ScreenTitle(title = "Student directory")
+            ScreenTitle(
+                title = "Student directory",
+                actions = {
+                    IconButton(
+                        onClick = {
+                            showSearch = !showSearch
+                            if (!showSearch) onQueryChange("")
+                        },
+                    ) {
+                        Icon(
+                            imageVector = if (showSearch) {
+                                Icons.Outlined.Close
+                            } else {
+                                Icons.Outlined.Search
+                            },
+                            contentDescription = if (showSearch) {
+                                "Close search"
+                            } else {
+                                "Search students"
+                            },
+                        )
+                    }
+                },
+            )
         }
 
-        AppTextField(
-            value = state.query,
-            onValueChange = onQueryChange,
-            label = "Search by name or student ID",
-            modifier = Modifier.padding(horizontal = 20.dp),
-            supportingText = "Only staff can use this directory.",
-        )
-        Spacer(Modifier.height(12.dp))
+        if (showSearch) {
+            AppTextField(
+                value = state.query,
+                onValueChange = onQueryChange,
+                label = "Search by name or student ID",
+                modifier = Modifier.padding(horizontal = 20.dp),
+                supportingText = "Only staff can use this directory.",
+            )
+            androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
+        }
 
         when {
             state.isLoading -> LoadingShimmer(
@@ -143,16 +192,24 @@ private fun StudentListScreen(
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                            start = 20.dp,
-                            end = 20.dp,
-                            bottom = 24.dp,
-                        ),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(bottom = 24.dp),
                     ) {
-                        items(filtered, key = { it.id }) { student ->
-                            StudentRow(student = student, onClick = { onOpenStudent(student.id) })
-                        }
+                        filtered
+                            .sortedBy { it.fullName.lowercase() }
+                            .groupBy { student ->
+                                student.fullName.firstOrNull()?.uppercase() ?: "#"
+                            }
+                            .forEach { (initial, rows) ->
+                                stickyHeader(key = "header-$initial") {
+                                    StickyListHeader(text = initial)
+                                }
+                                items(rows, key = { it.id }) { student ->
+                                    StudentRow(
+                                        student = student,
+                                        onClick = { onOpenStudent(student.id) },
+                                    )
+                                }
+                            }
                     }
                 }
             }
@@ -162,60 +219,23 @@ private fun StudentListScreen(
 
 @Composable
 private fun StudentRow(student: Student, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+    AppListRow(
+        title = student.fullName,
+        supportingText = "${student.studentId.value} · ${student.programme}",
+        leadingContent = {
             UserAvatar(
                 initials = student.initials,
-                size = 46.dp,
+                size = 40.dp,
                 contentDescription = "${student.fullName} initials",
             )
-            Column(
-                modifier = Modifier
-                    .padding(start = 14.dp)
-                    .weight(1f),
-            ) {
-                Text(
-                    text = student.fullName,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = student.studentId.value,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = student.programme,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Surface(
-                shape = MaterialTheme.shapes.small,
-                color = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.size(36.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    androidx.compose.material3.Icon(
-                        imageVector = Icons.Outlined.Person,
-                        contentDescription = "Open ${student.fullName}",
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
-                }
-            }
-        }
-    }
+        },
+        trailingContent = {
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        onClick = onClick,
+    )
 }

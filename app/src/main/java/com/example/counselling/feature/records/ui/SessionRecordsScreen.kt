@@ -1,9 +1,9 @@
 // Module 4 / Unique Feature 2 | Owner: Jeremy
-// Records list, completed-session intake and the urgency triage board.
+// Records list, completed-session intake and the urgency triage board. Rows
+// open a detail sheet; the triage buckets are sticky headers.
 package com.example.counselling.feature.records.ui
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,28 +13,26 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -53,20 +51,22 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.counselling.core.DateTimeUtils
-import com.example.counselling.feature.appointment.domain.AppointmentRepository
 import com.example.counselling.feature.appointment.domain.Appointment
-import com.example.counselling.feature.records.domain.SessionRecordRepository
+import com.example.counselling.feature.appointment.domain.AppointmentRepository
 import com.example.counselling.feature.records.domain.SessionRecord
+import com.example.counselling.feature.records.domain.SessionRecordRepository
 import com.example.counselling.feature.records.domain.TriageBucket
 import com.example.counselling.feature.records.domain.TriageBoard
+import com.example.counselling.ui.components.AppBottomSheet
+import com.example.counselling.ui.components.AppListRow
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.ConfirmDialog
 import com.example.counselling.ui.components.EmptyState
 import com.example.counselling.ui.components.ErrorState
 import com.example.counselling.ui.components.LoadingShimmer
 import com.example.counselling.ui.components.RiskBadge
-import com.example.counselling.ui.components.SectionHeader
 import com.example.counselling.ui.components.StatusChip
+import com.example.counselling.ui.components.StickyListHeader
 import com.example.counselling.ui.components.showAppMessage
 import com.example.counselling.ui.theme.LocalSemanticColors
 
@@ -104,7 +104,7 @@ fun SessionRecordsRoute(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun SessionRecordsScreen(
     state: SessionRecordsUiState,
@@ -128,97 +128,90 @@ private fun SessionRecordsScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .padding(horizontal = 20.dp)
-                .fillMaxWidth(),
-        ) {
-            Text(
-                text = "Private notes and follow-up care",
-                style = MaterialTheme.typography.headlineSmall,
-            )
-            Text(
-                text = "Private notes stay with you. Students only see the public summary.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
-            )
-        }
-
-        TabRow(
-            selectedTabIndex = selectedTab,
-            containerColor = MaterialTheme.colorScheme.background,
-        ) {
-            Tab(
-                selected = selectedTab == 0,
-                onClick = { selectedTab = 0 },
-                text = { Text("Records") },
-            )
-            Tab(
-                selected = selectedTab == 1,
-                onClick = { selectedTab = 1 },
-                text = {
-                    val count = triage.values.sumOf { it.size }
-                    Text(if (count == 0) "Triage board" else "Triage board ($count)")
-                },
-            )
-        }
-
-        if (selectedTab == 0) {
-            Row(
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .padding(horizontal = 20.dp)
+                    .fillMaxWidth(),
             ) {
                 Text(
-                    text = "Show archived",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.weight(1f),
+                    text = "Private notes and follow-up care",
+                    style = MaterialTheme.typography.headlineSmall,
                 )
-                Switch(checked = showArchived, onCheckedChange = { showArchived = it })
+                Text(
+                    text = "Private notes stay with you. Students only see the public summary.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+                )
             }
-        }
 
-        when {
-            state.isLoading -> LoadingShimmer(
-                modifier = Modifier.padding(20.dp),
-                rows = 4,
-            )
-
-            state.error != null && state.records.isEmpty() -> ErrorState(
-                message = state.error,
-                onRetry = onRetry,
-            )
-
-            else -> PullToRefreshBox(
-                isRefreshing = state.isRefreshing,
-                onRefresh = onRefresh,
-                modifier = Modifier.fillMaxSize(),
+            TabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = MaterialTheme.colorScheme.background,
             ) {
-                if (selectedTab == 0) {
-                    RecordsTab(
-                        state = state,
-                        records = visibleRecords,
-                        onAddRecord = onAddRecord,
-                        onEditRecord = onEditRecord,
-                        onScheduleFollowUp = onScheduleFollowUp,
-                        onViewRecord = { recordToView = it },
-                        onDeleteRecord = { recordToDelete = it },
-                        onArchive = onArchive,
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    text = { Text("Records") },
+                )
+                Tab(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    text = {
+                        val count = triage.values.sumOf { it.size }
+                        Text(if (count == 0) "Triage board" else "Triage board ($count)")
+                    },
+                )
+            }
+
+            if (selectedTab == 0) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Show archived",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
                     )
-                } else {
-                    TriageTab(
-                        triage = triage,
-                        onEditRecord = onEditRecord,
-                        onScheduleFollowUp = onScheduleFollowUp,
-                        onViewRecord = { recordToView = it },
-                        onArchive = onArchive,
-                    )
+                    Switch(checked = showArchived, onCheckedChange = { showArchived = it })
+                }
+            }
+
+            when {
+                state.isLoading -> LoadingShimmer(
+                    modifier = Modifier.padding(20.dp),
+                    rows = 4,
+                )
+
+                state.error != null && state.records.isEmpty() -> ErrorState(
+                    message = state.error,
+                    onRetry = onRetry,
+                )
+
+                else -> PullToRefreshBox(
+                    isRefreshing = state.isRefreshing,
+                    onRefresh = onRefresh,
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    if (selectedTab == 0) {
+                        RecordsTab(
+                            state = state,
+                            records = visibleRecords,
+                            onAddRecord = onAddRecord,
+                            onViewRecord = { recordToView = it },
+                        )
+                    } else {
+                        TriageTab(
+                            triage = triage,
+                            onViewRecord = { recordToView = it },
+                        )
+                    }
                 }
             }
         }
-    }
 
         AppSnackbarHost(
             hostState = snackbarHostState,
@@ -230,7 +223,31 @@ private fun SessionRecordsScreen(
     }
 
     recordToView?.let { record ->
-        RecordDetailDialog(record = record, onDismiss = { recordToView = null })
+        RecordDetailSheet(
+            record = record,
+            isBusy = state.busyRecordId == record.id,
+            onDismiss = { recordToView = null },
+            onEdit = {
+                recordToView = null
+                onEditRecord(record.id)
+            },
+            onScheduleFollowUp = {
+                recordToView = null
+                onScheduleFollowUp(record.id)
+            },
+            onArchive = {
+                recordToView = null
+                onArchive(record, !record.isArchived)
+            },
+            onDelete = if (record.isArchived) {
+                {
+                    recordToView = null
+                    recordToDelete = record
+                }
+            } else {
+                null
+            },
+        )
     }
 
     recordToDelete?.let { record ->
@@ -244,78 +261,13 @@ private fun SessionRecordsScreen(
     }
 }
 
-@Composable
-private fun RecordDetailDialog(record: SessionRecord, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Column {
-                Text(record.studentName)
-                Text(
-                    text = "${DateTimeUtils.formatDate(record.sessionStart)} · " +
-                        record.concernCategory,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
-        text = {
-            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    RiskBadge(record.riskLevel)
-                    if (record.isArchived) StatusChip("archived")
-                }
-                Text(
-                    text = "Public summary",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-                Text(
-                    text = record.publicSummary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-                Text(
-                    text = "Private notes",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-                Text(
-                    text = record.privateNotes,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-                if (record.followUpNeeded) {
-                    Text(
-                        text = "Follow-up due: " +
-                            (record.followUpDue?.let { DateTimeUtils.formatDateTime(it) }
-                                ?: "Not set"),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = LocalSemanticColors.current.warningContent,
-                        modifier = Modifier.padding(top = 10.dp),
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
-        },
-        shape = MaterialTheme.shapes.large,
-    )
-}
-
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RecordsTab(
     state: SessionRecordsUiState,
     records: List<SessionRecord>,
     onAddRecord: (String) -> Unit,
-    onEditRecord: (String) -> Unit,
-    onScheduleFollowUp: (String) -> Unit,
     onViewRecord: (SessionRecord) -> Unit,
-    onDeleteRecord: (SessionRecord) -> Unit,
-    onArchive: (SessionRecord, Boolean) -> Unit,
 ) {
     if (state.eligibleAppointments.isEmpty() && records.isEmpty()) {
         Column(
@@ -332,65 +284,63 @@ private fun RecordsTab(
         return
     }
 
+    val active = records.filter { !it.isArchived }
+    val archived = records.filter { it.isArchived }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(bottom = 24.dp),
     ) {
         if (state.eligibleAppointments.isNotEmpty()) {
-            item {
-                SectionHeader(
-                    title = "Completed sessions ready for notes",
-                    subtitle = "One record per completed appointment.",
-                )
+            stickyHeader(key = "header-ready") {
+                StickyListHeader(text = "Ready for notes")
             }
             items(state.eligibleAppointments, key = { "ready-${it.id}" }) { appointment ->
-                EligibleAppointmentCard(
+                EligibleAppointmentRow(
                     appointment = appointment,
                     onAdd = { onAddRecord(appointment.id) },
                 )
             }
-            item { Spacer(Modifier.height(12.dp)) }
         }
-        if (records.isEmpty()) {
-            item {
-                EmptyState(
-                    icon = Icons.Outlined.Description,
-                    title = if (state.eligibleAppointments.isEmpty()) {
-                        "No records to show"
-                    } else {
-                        "No saved records yet"
-                    },
-                    message = "Saved records and their follow-up dates will appear here.",
+        if (active.isNotEmpty()) {
+            stickyHeader(key = "header-active") {
+                StickyListHeader(text = "Active records")
+            }
+            items(active, key = { it.id }) { record ->
+                RecordRow(
+                    record = record,
+                    onClick = { onViewRecord(record) },
                 )
             }
-        } else {
-            items(records, key = { it.id }) { record ->
-                RecordCard(
+        }
+        if (archived.isNotEmpty()) {
+            stickyHeader(key = "header-archived") {
+                StickyListHeader(text = "Archived")
+            }
+            items(archived, key = { it.id }) { record ->
+                RecordRow(
                     record = record,
-                    isBusy = state.busyRecordId == record.id,
-                    onView = { onViewRecord(record) },
-                    onEdit = { onEditRecord(record.id) },
-                    onScheduleFollowUp = { onScheduleFollowUp(record.id) },
-                    onArchive = { onArchive(record, !record.isArchived) },
-                    onDelete = if (record.isArchived) {
-                        { onDeleteRecord(record) }
-                    } else {
-                        null
-                    },
+                    onClick = { onViewRecord(record) },
+                )
+            }
+        }
+        if (records.isEmpty()) {
+            item(key = "empty-records") {
+                EmptyState(
+                    icon = Icons.Outlined.Description,
+                    title = "No saved records yet",
+                    message = "Saved records and their follow-up dates will appear here.",
                 )
             }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TriageTab(
     triage: Map<TriageBucket, List<SessionRecord>>,
-    onEditRecord: (String) -> Unit,
-    onScheduleFollowUp: (String) -> Unit,
     onViewRecord: (SessionRecord) -> Unit,
-    onArchive: (SessionRecord, Boolean) -> Unit,
 ) {
     val total = triage.values.sumOf { it.size }
     if (total == 0) {
@@ -410,34 +360,19 @@ private fun TriageTab(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(bottom = 24.dp),
     ) {
         TriageBucket.entries.forEach { bucket ->
             val bucketRecords = triage[bucket].orEmpty()
             if (bucketRecords.isNotEmpty()) {
-                item(key = "header-${bucket.name}") {
-                    SectionHeader(
-                        title = "${bucket.label} (${bucketRecords.size})",
-                        subtitle = when (bucket) {
-                            TriageBucket.OVERDUE -> "Follow-up date has passed."
-                            TriageBucket.DUE_SOON -> "Due within the next seven days or high-risk review."
-                            TriageBucket.LATER -> "Scheduled for later follow-up."
-                        },
-                    )
+                stickyHeader(key = "header-${bucket.name}") {
+                    StickyListHeader(text = "${bucket.label} (${bucketRecords.size})")
                 }
                 items(bucketRecords, key = { "triage-${it.id}" }) { record ->
-                    RecordCard(
+                    RecordRow(
                         record = record,
-                        isBusy = false,
-                        onView = { onViewRecord(record) },
-                        onEdit = { onEditRecord(record.id) },
-                        onScheduleFollowUp = { onScheduleFollowUp(record.id) },
-                        onArchive = { onArchive(record, true) },
+                        onClick = { onViewRecord(record) },
                     )
-                }
-                item(key = "divider-${bucket.name}") {
-                    Spacer(Modifier.height(8.dp))
                 }
             }
         }
@@ -445,152 +380,173 @@ private fun TriageTab(
 }
 
 @Composable
-private fun EligibleAppointmentCard(
+private fun EligibleAppointmentRow(
     appointment: Appointment,
     onAdd: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
-        ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = appointment.studentName,
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                Text(
-                    text = "${DateTimeUtils.formatDate(appointment.slotStart)} · " +
-                        appointment.concernCategory,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            TextButton(onClick = onAdd) {
-                androidx.compose.material3.Icon(
-                    imageVector = Icons.Outlined.Add,
-                    contentDescription = null,
-                )
-                Text("Add record")
-            }
-        }
-    }
+    AppListRow(
+        title = appointment.studentName,
+        supportingText = "${DateTimeUtils.formatDate(appointment.slotStart)} · " +
+            appointment.concernCategory,
+        leadingIcon = Icons.Outlined.Add,
+        trailingContent = {
+            Text(
+                text = "Add",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        },
+        onClick = onAdd,
+    )
 }
 
 @Composable
-fun RecordCard(
+private fun RecordRow(
+    record: SessionRecord,
+    onClick: () -> Unit,
+) {
+    AppListRow(
+        title = record.studentName,
+        supportingText = "${DateTimeUtils.formatDate(record.sessionStart)} · " +
+            record.concernCategory,
+        leadingIcon = Icons.Outlined.Description,
+        trailingContent = {
+            if (record.isArchived) {
+                StatusChip("archived")
+            } else {
+                RiskBadge(record.riskLevel)
+            }
+        },
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun RecordDetailSheet(
     record: SessionRecord,
     isBusy: Boolean,
-    onView: () -> Unit,
+    onDismiss: () -> Unit,
     onEdit: () -> Unit,
     onScheduleFollowUp: () -> Unit,
     onArchive: () -> Unit,
-    onDelete: (() -> Unit)? = null,
+    onDelete: (() -> Unit)?,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    AppBottomSheet(
+        onDismissRequest = onDismiss,
+        title = record.studentName,
     ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = record.studentName,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = "${DateTimeUtils.formatDate(record.sessionStart)} · ${record.concernCategory}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Column(horizontalAlignment = Alignment.End) {
-                    RiskBadge(record.riskLevel)
-                    if (record.isArchived) {
-                        Spacer(Modifier.height(4.dp))
-                        StatusChip("archived")
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = record.publicSummary,
+                text = "${DateTimeUtils.formatDate(record.sessionStart)} · " +
+                    record.concernCategory,
                 style = MaterialTheme.typography.bodyMedium,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
             )
-            if (record.followUpNeeded) {
-                Text(
-                    text = "Follow-up due: " +
-                        (record.followUpDue?.let { DateTimeUtils.formatDateTime(it) } ?: "Not set"),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = LocalSemanticColors.current.warningContent,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
-            if (record.isHighRisk) {
-                Text(
-                    text = "High risk — prioritise review.",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-            }
-            if (!record.canEdit && !record.isArchived) {
-                Text(
-                    text = "Content is read-only after 7 days. Archive/restore is still available.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-            }
+            RiskBadge(record.riskLevel)
+        }
+        if (record.isArchived) {
+            StatusChip(
+                status = "archived",
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+        Text(
+            text = "Public summary",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+        Text(
+            text = record.publicSummary,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        Text(
+            text = "Private notes",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+        Text(
+            text = record.privateNotes,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        if (record.followUpNeeded) {
+            Text(
+                text = "Follow-up due: " +
+                    (record.followUpDue?.let { DateTimeUtils.formatDateTime(it) } ?: "Not set"),
+                style = MaterialTheme.typography.labelMedium,
+                color = LocalSemanticColors.current.warningContent,
+                modifier = Modifier.padding(top = 10.dp),
+            )
+        }
+        if (record.isHighRisk) {
+            Text(
+                text = "High risk — prioritise review.",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+        if (!record.canEdit && !record.isArchived) {
+            Text(
+                text = "Content is read-only after 7 days. Archive/restore is still available.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
 
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant,
-                modifier = Modifier.padding(top = 12.dp),
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+        Spacer(Modifier.height(16.dp))
+        if (record.canEdit && !record.isArchived) {
+            Button(
+                onClick = onEdit,
+                enabled = !isBusy,
+                shape = CircleShape,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
             ) {
-                TextButton(onClick = onView, enabled = !isBusy) {
-                    Text("View")
-                }
-                if (record.canEdit && !record.isArchived) {
-                    TextButton(onClick = onEdit, enabled = !isBusy) {
-                        Text("Edit")
-                    }
-                }
-                if (!record.isArchived) {
-                    TextButton(onClick = onScheduleFollowUp, enabled = !isBusy) {
-                        Text("Follow up")
-                    }
-                }
-                TextButton(onClick = onArchive, enabled = !isBusy) {
-                    Text(if (record.isArchived) "Restore" else "Archive")
-                }
-                if (record.isArchived && onDelete != null) {
-                    TextButton(onClick = onDelete, enabled = !isBusy) {
-                        Text("Delete forever", color = MaterialTheme.colorScheme.error)
-                    }
-                }
+                Text("Edit record")
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+        if (!record.isArchived) {
+            OutlinedButton(
+                onClick = onScheduleFollowUp,
+                enabled = !isBusy,
+                shape = CircleShape,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+            ) {
+                Text("Schedule follow-up")
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+        OutlinedButton(
+            onClick = onArchive,
+            enabled = !isBusy,
+            shape = CircleShape,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp),
+        ) {
+            Text(if (record.isArchived) "Restore record" else "Archive record")
+        }
+        if (onDelete != null) {
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = onDelete,
+                enabled = !isBusy,
+                shape = CircleShape,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+            ) {
+                Text("Delete forever", color = MaterialTheme.colorScheme.error)
             }
         }
     }

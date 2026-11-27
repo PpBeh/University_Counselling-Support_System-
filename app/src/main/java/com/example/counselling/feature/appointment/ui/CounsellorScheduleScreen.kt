@@ -1,12 +1,12 @@
 // Module 2 (counsellor side) | Owner: Beh
-// The Module 3 availability manager will extend this screen in the next phase.
+// Today-and-later sessions as date-grouped rows. Confirming, declining and
+// emergency changes live in the row sheet; destructive actions still confirm.
 package com.example.counselling.feature.appointment.ui
 
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,6 +18,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -53,6 +55,9 @@ import com.example.counselling.ui.components.FilterChipRow
 import com.example.counselling.ui.components.LoadingShimmer
 import com.example.counselling.ui.components.ScreenTitle
 import com.example.counselling.ui.components.SecondaryButton
+import com.example.counselling.ui.components.StickyListHeader
+import com.example.counselling.ui.components.SwipeAction
+import com.example.counselling.ui.components.SwipeRevealRow
 import com.example.counselling.ui.components.showAppMessage
 
 @Composable
@@ -95,7 +100,7 @@ fun CounsellorScheduleRoute(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun CounsellorScheduleScreen(
     state: AppointmentsUiState,
@@ -115,6 +120,7 @@ private fun CounsellorScheduleScreen(
     val timeFilters = listOf("Upcoming", "This week", "All")
     var selectedFilter by remember { mutableStateOf("All") }
     var selectedTimeFilter by remember { mutableStateOf("Upcoming") }
+    var selectedAppointment by remember { mutableStateOf<Appointment?>(null) }
     var pendingNoShow by remember { mutableStateOf<Appointment?>(null) }
     var pendingDecline by remember { mutableStateOf<Appointment?>(null) }
     var pendingCancel by remember { mutableStateOf<Appointment?>(null) }
@@ -153,27 +159,27 @@ private fun CounsellorScheduleScreen(
 
             Column(
                 modifier = Modifier
-                    .padding(horizontal = 20.dp)
+                    .padding(horizontal = 16.dp)
                     .fillMaxWidth(),
             ) {
                 SecondaryButton(
                     text = "Manage my availability",
                     onClick = onManageAvailability,
                 )
-                Spacer(Modifier.height(10.dp))
+                androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
             }
 
             FilterChipRow(
                 options = timeFilters,
                 selected = selectedTimeFilter,
                 onSelect = { selectedTimeFilter = it },
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
             FilterChipRow(
                 options = filters,
                 selected = selectedFilter,
                 onSelect = { selectedFilter = it },
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
 
             when {
@@ -211,67 +217,100 @@ private fun CounsellorScheduleScreen(
                     } else {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(
-                                start = 20.dp,
-                                end = 20.dp,
-                                bottom = 24.dp,
-                            ),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            contentPadding = PaddingValues(bottom = 24.dp),
                         ) {
-                            items(
-                                appointments,
-                                key = { appointment ->
-                                    val feedback = state.feedback[appointment.id]
-                                    "${appointment.uiKey()}:${feedback?.rating}:${feedback?.comment}"
-                                },
-                            ) { appointment ->
-                                val feedback = state.feedback[appointment.id]
-                                AppointmentCard(
-                                    appointment = appointment,
-                                    viewer = viewer,
-                                    isBusy = state.isMutating,
-                                    notice = appointment.noticeFor(viewer),
-                                    feedbackRating = feedback?.rating,
-                                    feedbackComment = feedback?.comment,
-                                    onConfirm = if (
-                                        appointment.status == AppointmentStatus.Pending &&
-                                        (
-                                            !appointment.isFollowUp ||
-                                                appointment.lastEvent == "rescheduled_by_student"
+                            appointments
+                                .groupBy { DateTimeUtils.formatDate(it.slotStart) }
+                                .forEach { (date, rows) ->
+                                    stickyHeader(key = "header-$date") {
+                                        StickyListHeader(text = date)
+                                    }
+                                    items(
+                                        rows,
+                                        key = { appointment ->
+                                            val feedback = state.feedback[appointment.id]
+                                            "${appointment.uiKey()}:${feedback?.rating}:${feedback?.comment}"
+                                        },
+                                    ) { appointment ->
+                                        val canConfirm = appointment.status ==
+                                            AppointmentStatus.Pending &&
+                                            (
+                                                !appointment.isFollowUp ||
+                                                    appointment.lastEvent == "rescheduled_by_student"
+                                                )
+                                        val canReschedule = appointment.status ==
+                                            AppointmentStatus.Confirmed
+                                        val swipeWidth = when {
+                                            canConfirm && appointment.status ==
+                                                AppointmentStatus.Pending -> 184.dp
+                                            canReschedule -> 184.dp
+                                            appointment.status == AppointmentStatus.Pending -> 96.dp
+                                            else -> 0.dp
+                                        }
+
+                                        if (swipeWidth > 0.dp) {
+                                            SwipeRevealRow(
+                                                revealWidth = swipeWidth,
+                                                actions = { close ->
+                                                    when (appointment.status) {
+                                                        AppointmentStatus.Pending -> {
+                                                            if (canConfirm) {
+                                                                SwipeAction(
+                                                                    label = "Confirm",
+                                                                    icon = Icons.Outlined.Check,
+                                                                    onClick = {
+                                                                        close()
+                                                                        onConfirm(appointment.id)
+                                                                    },
+                                                                )
+                                                            }
+                                                            SwipeAction(
+                                                                label = "Decline",
+                                                                icon = Icons.Outlined.Close,
+                                                                destructive = true,
+                                                                onClick = {
+                                                                    close()
+                                                                    pendingDecline = appointment
+                                                                },
+                                                            )
+                                                        }
+                                                        else -> {
+                                                            SwipeAction(
+                                                                label = "Reschedule",
+                                                                icon = Icons.Outlined.CalendarMonth,
+                                                                onClick = {
+                                                                    close()
+                                                                    onReschedule(appointment.id)
+                                                                },
+                                                            )
+                                                            SwipeAction(
+                                                                label = "Cancel",
+                                                                icon = Icons.Outlined.Close,
+                                                                destructive = true,
+                                                                onClick = {
+                                                                    close()
+                                                                    pendingCancel = appointment
+                                                                },
+                                                            )
+                                                        }
+                                                    }
+                                                },
+                                            ) {
+                                                AppointmentRow(
+                                                    appointment = appointment,
+                                                    viewer = viewer,
+                                                    onClick = { selectedAppointment = appointment },
+                                                )
+                                            }
+                                        } else {
+                                            AppointmentRow(
+                                                appointment = appointment,
+                                                viewer = viewer,
+                                                onClick = { selectedAppointment = appointment },
                                             )
-                                    ) {
-                                        { onConfirm(appointment.id) }
-                                    } else {
-                                        null
-                                    },
-                                    onDecline = if (appointment.status == AppointmentStatus.Pending) {
-                                        { pendingDecline = appointment }
-                                    } else {
-                                        null
-                                    },
-                                    onReschedule = if (appointment.status == AppointmentStatus.Confirmed) {
-                                        { onReschedule(appointment.id) }
-                                    } else {
-                                        null
-                                    },
-                                    onCancel = if (appointment.status == AppointmentStatus.Confirmed) {
-                                        { pendingCancel = appointment }
-                                    } else {
-                                        null
-                                    },
-                                    cancelLabel = "Cancel session",
-                                    onComplete = if (appointment.status == AppointmentStatus.Confirmed) {
-                                        { onComplete(appointment.id) }
-                                    } else {
-                                        null
-                                    },
-                                    onNoShow = if (appointment.status == AppointmentStatus.Confirmed) {
-                                        { pendingNoShow = appointment }
-                                    } else {
-                                        null
-                                    },
-                                )
-                            }
+                                        }
+                                    }
+                                }
                         }
                     }
                 }
@@ -284,6 +323,74 @@ private fun CounsellorScheduleScreen(
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
                 .padding(16.dp),
+        )
+    }
+
+    selectedAppointment?.let { appointment ->
+        val canConfirm = appointment.status == AppointmentStatus.Pending &&
+            (
+                !appointment.isFollowUp ||
+                    appointment.lastEvent == "rescheduled_by_student"
+                )
+        val isConfirmed = appointment.status == AppointmentStatus.Confirmed
+        val feedback = state.feedback[appointment.id]
+        AppointmentDetailSheet(
+            appointment = appointment,
+            viewer = viewer,
+            onDismiss = { selectedAppointment = null },
+            isBusy = state.isMutating,
+            onConfirm = if (canConfirm) {
+                {
+                    selectedAppointment = null
+                    onConfirm(appointment.id)
+                }
+            } else {
+                null
+            },
+            onDecline = if (appointment.status == AppointmentStatus.Pending) {
+                {
+                    selectedAppointment = null
+                    pendingDecline = appointment
+                }
+            } else {
+                null
+            },
+            onReschedule = if (isConfirmed) {
+                {
+                    selectedAppointment = null
+                    onReschedule(appointment.id)
+                }
+            } else {
+                null
+            },
+            onComplete = if (isConfirmed) {
+                {
+                    selectedAppointment = null
+                    onComplete(appointment.id)
+                }
+            } else {
+                null
+            },
+            onNoShow = if (isConfirmed) {
+                {
+                    selectedAppointment = null
+                    pendingNoShow = appointment
+                }
+            } else {
+                null
+            },
+            onCancel = if (isConfirmed) {
+                {
+                    selectedAppointment = null
+                    pendingCancel = appointment
+                }
+            } else {
+                null
+            },
+            cancelLabel = "Cancel session",
+            feedbackRating = feedback?.rating,
+            feedbackComment = feedback?.comment,
+            notice = appointment.noticeFor(viewer),
         )
     }
 
