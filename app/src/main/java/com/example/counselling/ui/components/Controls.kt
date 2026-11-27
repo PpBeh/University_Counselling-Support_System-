@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
@@ -51,7 +52,7 @@ fun PrimaryButton(
             .fillMaxWidth()
             .heightIn(min = 52.dp),
         enabled = enabled && !loading,
-        shape = MaterialTheme.shapes.medium,
+        shape = CircleShape,
     ) {
         if (loading) {
             CircularProgressIndicator(
@@ -92,7 +93,7 @@ fun SecondaryButton(
             .fillMaxWidth()
             .heightIn(min = 52.dp),
         enabled = enabled && !loading,
-        shape = MaterialTheme.shapes.medium,
+        shape = CircleShape,
     ) {
         if (loading) {
             CircularProgressIndicator(

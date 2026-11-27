@@ -56,6 +56,7 @@ import com.example.counselling.ui.components.PrimaryButton
 import com.example.counselling.ui.components.ScreenTitle
 import com.example.counselling.ui.components.SecondaryButton
 import com.example.counselling.ui.components.SectionHeader
+import com.example.counselling.ui.components.SectionLabel
 import com.example.counselling.ui.components.StatusChip
 import com.example.counselling.ui.components.UserAvatar
 import com.example.counselling.ui.components.showAppMessage
@@ -316,6 +317,16 @@ private fun ProfileScreen(
                         icon = Icons.Outlined.Email,
                     )
                 }
+
+                Spacer(Modifier.height(24.dp))
+                SectionLabel(title = "Privacy")
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "Your sessions are only visible to you and the counsellor involved. " +
+                        "Anonymous enquiries do not store your identity.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
 
                 Spacer(Modifier.height(24.dp))
                 SectionHeader(
