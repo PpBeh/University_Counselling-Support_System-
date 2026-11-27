@@ -39,7 +39,8 @@ fun destinationsFor(user: User): List<TopLevelDestination> =
     user.homeTabs().map { it.toDestination() }
 
 // OOP: Polymorphism - HomeTab owns its logical identity; this UI mapping is the
-// only place that knows the Android icon and route string.
+// only place that knows the Android icon and route string. Labels stay short
+// enough for one line in the bottom bar.
 private fun HomeTab.toDestination(): TopLevelDestination = when (this) {
     HomeTab.HOME -> TopLevelDestination(
         Routes.HOME,
@@ -49,7 +50,7 @@ private fun HomeTab.toDestination(): TopLevelDestination = when (this) {
     )
     HomeTab.APPOINTMENTS -> TopLevelDestination(
         Routes.STUDENT_APPOINTMENTS,
-        label,
+        "Sessions",
         Icons.Outlined.CalendarMonth,
         Icons.Filled.CalendarMonth,
     )

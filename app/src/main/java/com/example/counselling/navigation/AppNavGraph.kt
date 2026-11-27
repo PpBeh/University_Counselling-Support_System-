@@ -29,6 +29,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavBackStackEntry
@@ -257,7 +258,14 @@ private fun MainApp(
                                     modifier = Modifier.size(24.dp),
                                 )
                             },
-                            label = { Text(destination.label) },
+                            label = {
+                                Text(
+                                    text = destination.label,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
                             alwaysShowLabel = true,
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = MaterialTheme.colorScheme.primary,
