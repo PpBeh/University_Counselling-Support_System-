@@ -4,10 +4,16 @@
 // destinations; no role-string branch decides which shell to show.
 package com.example.counselling.navigation
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -21,7 +27,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -150,6 +160,10 @@ private fun AuthNavGraph(
         navController = navController,
         startDestination = Routes.LOGIN,
         modifier = Modifier.fillMaxSize(),
+        enterTransition = { fadeIn(tween(150)) },
+        exitTransition = { fadeOut(tween(150)) },
+        popEnterTransition = { fadeIn(tween(150)) },
+        popExitTransition = { fadeOut(tween(150)) },
     ) {
         composable(Routes.LOGIN) {
             LoginRoute(
@@ -193,9 +207,15 @@ private fun MainApp(
     themePreferences: ThemePreferences,
 ) {
     val destinations = remember(user) { destinationsFor(user) }
+    val topLevelRoutes = remember(destinations) { destinations.map { it.route }.toSet() }
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+
+    val isTopLevelEntry: (NavBackStackEntry) -> Boolean = { entry ->
+        entry.destination.route?.let { it in topLevelRoutes } == true
+    }
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -219,13 +239,22 @@ private fun MainApp(
             if (isTopLevel) {
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                     destinations.forEach { destination ->
+                        val selected = currentRoute == destination.route
                         NavigationBarItem(
-                            selected = currentRoute == destination.route,
-                            onClick = { navController.navigateToTab(destination.route) },
+                            selected = selected,
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                navController.navigateToTab(destination.route)
+                            },
                             icon = {
-                                androidx.compose.material3.Icon(
-                                    imageVector = destination.icon,
+                                Icon(
+                                    imageVector = if (selected) {
+                                        destination.selectedIcon
+                                    } else {
+                                        destination.icon
+                                    },
                                     contentDescription = destination.label,
+                                    modifier = Modifier.size(24.dp),
                                 )
                             },
                             label = { Text(destination.label) },
@@ -247,6 +276,48 @@ private fun MainApp(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
+            enterTransition = {
+                if (isTopLevelEntry(initialState) && isTopLevelEntry(targetState)) {
+                    fadeIn(tween(150))
+                } else {
+                    slideIntoContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Start,
+                        animationSpec = tween(280),
+                    ) + fadeIn(tween(220))
+                }
+            },
+            exitTransition = {
+                if (isTopLevelEntry(initialState) && isTopLevelEntry(targetState)) {
+                    fadeOut(tween(150))
+                } else {
+                    slideOutOfContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Start,
+                        animationSpec = tween(280),
+                        targetOffset = { it / 4 },
+                    ) + fadeOut(tween(180))
+                }
+            },
+            popEnterTransition = {
+                if (isTopLevelEntry(initialState) && isTopLevelEntry(targetState)) {
+                    fadeIn(tween(150))
+                } else {
+                    slideIntoContainer(
+                        AnimatedContentTransitionScope.SlideDirection.End,
+                        animationSpec = tween(280),
+                    ) + fadeIn(tween(220))
+                }
+            },
+            popExitTransition = {
+                if (isTopLevelEntry(initialState) && isTopLevelEntry(targetState)) {
+                    fadeOut(tween(150))
+                } else {
+                    slideOutOfContainer(
+                        AnimatedContentTransitionScope.SlideDirection.End,
+                        animationSpec = tween(280),
+                        targetOffset = { it / 4 },
+                    ) + fadeOut(tween(180))
+                }
+            },
         ) {
             composable(Routes.HOME) {
                 HomeRoute(

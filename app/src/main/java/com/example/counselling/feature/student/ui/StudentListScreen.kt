@@ -43,6 +43,7 @@ import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.EmptyState
 import com.example.counselling.ui.components.ErrorState
 import com.example.counselling.ui.components.LoadingShimmer
+import com.example.counselling.ui.components.ScreenTitle
 import com.example.counselling.ui.components.UserAvatar
 
 @Composable
@@ -88,7 +89,11 @@ private fun StudentListScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        AppTopBar(title = "Student directory", onBack = onBack)
+        if (onBack != null) {
+            AppTopBar(title = "Student directory", onBack = onBack)
+        } else {
+            ScreenTitle(title = "Student directory")
+        }
 
         AppTextField(
             value = state.query,

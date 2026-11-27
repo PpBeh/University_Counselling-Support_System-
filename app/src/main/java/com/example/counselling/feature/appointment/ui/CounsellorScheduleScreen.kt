@@ -46,12 +46,12 @@ import com.example.counselling.feature.appointment.domain.Appointment
 import com.example.counselling.feature.appointment.domain.AppointmentRepository
 import com.example.counselling.feature.enquiry.domain.FeedbackRepository
 import com.example.counselling.ui.components.AppSnackbarHost
-import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.ConfirmDialog
 import com.example.counselling.ui.components.EmptyState
 import com.example.counselling.ui.components.ErrorState
 import com.example.counselling.ui.components.FilterChipRow
 import com.example.counselling.ui.components.LoadingShimmer
+import com.example.counselling.ui.components.ScreenTitle
 import com.example.counselling.ui.components.SecondaryButton
 import com.example.counselling.ui.components.showAppMessage
 
@@ -141,8 +141,9 @@ private fun CounsellorScheduleScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            AppTopBar(
-                title = "My schedule",
+            ScreenTitle(
+                title = "Your sessions",
+                subtitle = "Confirm requests, decline what you cannot take, or manage an emergency change.",
                 actions = {
                     IconButton(onClick = onRefresh) {
                         Icon(Icons.Outlined.Refresh, contentDescription = "Refresh schedule")
@@ -155,16 +156,6 @@ private fun CounsellorScheduleScreen(
                     .padding(horizontal = 20.dp)
                     .fillMaxWidth(),
             ) {
-                Text(
-                    text = "Your sessions",
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                Text(
-                    text = "Confirm requests, decline what you cannot take, or manage an emergency change.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-                )
                 SecondaryButton(
                     text = "Manage my availability",
                     onClick = onManageAvailability,

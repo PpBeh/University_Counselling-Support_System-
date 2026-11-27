@@ -55,7 +55,6 @@ import com.example.counselling.feature.enquiry.domain.EnquiryRepository
 import com.example.counselling.feature.enquiry.domain.EnquiryStatus
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
-import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.ConfirmDialog
 import com.example.counselling.ui.components.DropdownField
 import com.example.counselling.ui.components.EmptyState
@@ -142,7 +141,6 @@ private fun StudentEnquiriesScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            AppTopBar(title = "Enquiries")
             PullToRefreshBox(
                 isRefreshing = state.isRefreshing,
                 onRefresh = onRefresh,

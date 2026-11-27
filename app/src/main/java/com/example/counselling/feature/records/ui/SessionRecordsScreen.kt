@@ -60,7 +60,6 @@ import com.example.counselling.feature.records.domain.SessionRecord
 import com.example.counselling.feature.records.domain.TriageBucket
 import com.example.counselling.feature.records.domain.TriageBoard
 import com.example.counselling.ui.components.AppSnackbarHost
-import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.ConfirmDialog
 import com.example.counselling.ui.components.EmptyState
 import com.example.counselling.ui.components.ErrorState
@@ -129,7 +128,6 @@ private fun SessionRecordsScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            AppTopBar(title = "Session records")
         Column(
             modifier = Modifier
                 .padding(horizontal = 20.dp)

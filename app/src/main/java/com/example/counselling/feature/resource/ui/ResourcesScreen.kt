@@ -60,6 +60,7 @@ import com.example.counselling.ui.components.ErrorState
 import com.example.counselling.ui.components.FilterChipRow
 import com.example.counselling.ui.components.LoadingShimmer
 import com.example.counselling.ui.components.PrimaryButton
+import com.example.counselling.ui.components.ScreenTitle
 import com.example.counselling.ui.components.StatusChip
 import com.example.counselling.ui.components.showAppMessage
 import kotlinx.coroutines.launch
@@ -157,31 +158,38 @@ private fun ResourcesScreen(
         }
     }
 
+    val subtitle = if (hotlineOnly) {
+        "If you are in immediate danger, contact campus security or local emergency services."
+    } else {
+        "Calm, practical resources for the things students bring to counselling."
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            AppTopBar(
-                title = if (hotlineOnly) "Urgent support" else "Resources",
-                onBack = onBack,
-            )
+            if (onBack != null) {
+                AppTopBar(
+                    title = if (hotlineOnly) "Urgent support" else "Resources",
+                    onBack = onBack,
+                )
+            } else {
+                ScreenTitle(
+                    title = if (hotlineOnly) "Immediate support" else "Self-help library",
+                    subtitle = subtitle,
+                )
+            }
             Column(
                 modifier = Modifier
                     .padding(horizontal = 20.dp)
                     .fillMaxWidth(),
             ) {
-                Text(
-                    text = if (hotlineOnly) "Immediate support" else "Self-help library",
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                Text(
-                    text = if (hotlineOnly) {
-                        "If you are in immediate danger, contact campus security or local emergency services."
-                    } else {
-                        "Calm, practical resources for the things students bring to counselling."
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-                )
+                if (onBack != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+                    )
+                }
                 if (canManage) {
                     PrimaryButton(
                         text = "Add resource",

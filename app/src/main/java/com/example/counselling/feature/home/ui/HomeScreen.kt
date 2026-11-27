@@ -48,9 +48,9 @@ import com.example.counselling.feature.appointment.domain.Appointment
 import com.example.counselling.feature.appointment.ui.AppointmentCard
 import com.example.counselling.feature.records.domain.AdminDashboardStats
 import com.example.counselling.navigation.Routes
-import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.InfoCard
 import com.example.counselling.ui.components.LoadingShimmer
+import com.example.counselling.ui.components.ScreenTitle
 import com.example.counselling.ui.components.SectionHeader
 import com.example.counselling.ui.components.UserAvatar
 import com.example.counselling.ui.theme.LocalSemanticColors
@@ -71,84 +71,48 @@ fun HomeScreen(
     onRetryStats: () -> Unit = {},
 ) {
     Column(modifier = modifier.fillMaxSize()) {
-        AppTopBar(
-            title = "Counselling Support",
-            actions = {
-                IconButton(onClick = { onNavigate(Routes.PROFILE) }) {
-                    UserAvatar(
-                        initials = user.initials,
-                        size = 34.dp,
-                        contentDescription = "Open profile",
-                    )
-                }
-            },
-        )
-
         Column(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp),
+                .padding(bottom = 28.dp),
         ) {
-            GreetingCard(user = user)
-            Spacer(Modifier.height(22.dp))
+            ScreenTitle(
+                title = "${DateTimeUtils.greeting()}, ${user.firstName}",
+                subtitle = DateTimeUtils.todayHeading(),
+                actions = {
+                    IconButton(onClick = { onNavigate(Routes.PROFILE) }) {
+                        UserAvatar(
+                            initials = user.initials,
+                            size = 40.dp,
+                            contentDescription = "Open profile",
+                        )
+                    }
+                },
+            )
+            Spacer(Modifier.height(14.dp))
 
-            when {
-                user.permissions.canBookAppointments() -> StudentHome(
-                    student = user as Student,
-                    onNavigate = onNavigate,
-                    appointments = appointments,
-                    isLoadingAppointments = isLoadingAppointments,
-                    appointmentError = appointmentError,
-                    onRetryAppointments = onRetryAppointments,
-                )
-                user.permissions.canViewPrivateSessionNotes() -> CounsellorHome(onNavigate)
-                else -> AdminHome(
-                    onNavigate = onNavigate,
-                    stats = adminStats,
-                    isLoadingStats = isLoadingStats,
-                    statsError = statsError,
-                    onRetryStats = onRetryStats,
-                )
+            Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+                when {
+                    user.permissions.canBookAppointments() -> StudentHome(
+                        student = user as Student,
+                        onNavigate = onNavigate,
+                        appointments = appointments,
+                        isLoadingAppointments = isLoadingAppointments,
+                        appointmentError = appointmentError,
+                        onRetryAppointments = onRetryAppointments,
+                    )
+                    user.permissions.canViewPrivateSessionNotes() -> CounsellorHome(onNavigate)
+                    else -> AdminHome(
+                        onNavigate = onNavigate,
+                        stats = adminStats,
+                        isLoadingStats = isLoadingStats,
+                        statsError = statsError,
+                        onRetryStats = onRetryStats,
+                    )
+                }
             }
-
-            Spacer(Modifier.height(28.dp))
-        }
-    }
-}
-
-@Composable
-private fun GreetingCard(user: User) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.primaryContainer,
-    ) {
-        Column(modifier = Modifier.padding(22.dp)) {
-            Text(
-                text = DateTimeUtils.greeting(),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
-            )
-            Text(
-                text = user.firstName,
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-            Text(
-                text = user.homeGreeting(),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f),
-                modifier = Modifier.padding(top = 6.dp),
-            )
-            Text(
-                text = DateTimeUtils.todayHeading(),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
-                modifier = Modifier.padding(top = 14.dp),
-            )
         }
     }
 }

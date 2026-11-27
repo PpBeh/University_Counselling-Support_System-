@@ -45,7 +45,6 @@ import com.example.counselling.feature.enquiry.domain.EnquiryStatus
 import com.example.counselling.feature.resource.domain.ResourceRepository
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
-import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.DropdownField
 import com.example.counselling.ui.components.EmptyState
 import com.example.counselling.ui.components.ErrorState
@@ -105,7 +104,6 @@ private fun CounsellorInboxScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            AppTopBar(title = "Counselling inbox")
             Column(modifier = Modifier.padding(horizontal = 20.dp)) {
                 Text(
                     text = "Student questions",

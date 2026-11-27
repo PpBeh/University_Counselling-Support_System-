@@ -44,7 +44,6 @@ import com.example.counselling.core.AppConstants
 import com.example.counselling.feature.counsellor.domain.CounsellorRepository
 import com.example.counselling.core.domain.Counsellor
 import com.example.counselling.ui.components.AppTextField
-import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.EmptyState
 import com.example.counselling.ui.components.ErrorState
 import com.example.counselling.ui.components.FilterChipRow
@@ -112,7 +111,6 @@ private fun CounsellorListScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        AppTopBar(title = "Counsellors")
         Column(
             modifier = Modifier
                 .padding(horizontal = 20.dp)

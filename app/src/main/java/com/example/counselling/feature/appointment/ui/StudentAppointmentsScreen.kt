@@ -54,13 +54,13 @@ import com.example.counselling.feature.appointment.domain.AppointmentRepository
 import com.example.counselling.feature.enquiry.domain.FeedbackRepository
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
-import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.ConfirmDialog
 import com.example.counselling.ui.components.EmptyState
 import com.example.counselling.ui.components.ErrorState
 import com.example.counselling.ui.components.FilterChipRow
 import com.example.counselling.ui.components.LoadingShimmer
 import com.example.counselling.ui.components.PrimaryButton
+import com.example.counselling.ui.components.ScreenTitle
 import com.example.counselling.ui.components.StarRating
 import com.example.counselling.ui.components.showAppMessage
 
@@ -171,8 +171,9 @@ private fun StudentAppointmentsScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            AppTopBar(
-                title = "Appointments",
+            ScreenTitle(
+                title = "Your counselling sessions",
+                subtitle = "Private, calm and at your pace.",
                 actions = {
                     IconButton(onClick = onRefresh) {
                         Icon(Icons.Outlined.Refresh, contentDescription = "Refresh appointments")
@@ -185,16 +186,6 @@ private fun StudentAppointmentsScreen(
                     .padding(horizontal = 20.dp)
                     .fillMaxWidth(),
             ) {
-                Text(
-                    text = "Your counselling sessions",
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                Text(
-                    text = "Private, calm and at your pace.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-                )
                 PrimaryButton(
                     text = "Book a session",
                     onClick = onBook,
