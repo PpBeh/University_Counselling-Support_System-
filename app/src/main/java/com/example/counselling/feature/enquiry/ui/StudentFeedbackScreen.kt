@@ -18,7 +18,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.StarBorder
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -48,10 +47,12 @@ import com.example.counselling.feature.enquiry.domain.Feedback
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.AppTopBar
+import com.example.counselling.ui.components.AppBottomSheet
 import com.example.counselling.ui.components.ConfirmDialog
 import com.example.counselling.ui.components.EmptyState
 import com.example.counselling.ui.components.ErrorState
 import com.example.counselling.ui.components.LoadingShimmer
+import com.example.counselling.ui.components.PrimaryButton
 import com.example.counselling.ui.components.StarRating
 import com.example.counselling.ui.components.showAppMessage
 
@@ -279,58 +280,55 @@ private fun RatingDialog(
     var comment by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
 
-    AlertDialog(
+    AppBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("Rate your session") },
-        text = {
-            Column {
-                Text(
-                    text = "${appointment.counsellorName} · " +
-                        DateTimeUtils.formatDate(appointment.slotStart),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(10.dp))
-                StarRating(
-                    rating = rating,
-                    onRatingChange = {
-                        rating = it
-                        error = null
-                    },
-                    starSize = 36.dp,
-                )
-                Spacer(Modifier.height(8.dp))
-                AppTextField(
-                    value = comment,
-                    onValueChange = {
-                        comment = it
-                        error = null
-                    },
-                    label = "Comment (optional)",
-                    singleLine = false,
-                    maxLines = 4,
-                    supportingText = "${comment.length}/500",
-                    error = error,
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    error = when {
-                        rating !in 1..5 -> "Choose a rating from 1 to 5 stars."
-                        comment.length > 500 -> "Comment must be 500 characters or fewer."
-                        else -> null
-                    }
-                    if (error == null) onSubmit(rating, comment)
-                },
-            ) {
-                Text("Submit feedback")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-        shape = MaterialTheme.shapes.large,
-    )
+        title = "Rate your session",
+    ) {
+        Text(
+            text = "${appointment.counsellorName} · " +
+                DateTimeUtils.formatDate(appointment.slotStart),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(12.dp))
+        StarRating(
+            rating = rating,
+            onRatingChange = {
+                rating = it
+                error = null
+            },
+            starSize = 40.dp,
+        )
+        Spacer(Modifier.height(12.dp))
+        AppTextField(
+            value = comment,
+            onValueChange = {
+                comment = it
+                error = null
+            },
+            label = "Comment (optional)",
+            singleLine = false,
+            maxLines = 4,
+            supportingText = "${comment.length}/500",
+            error = error,
+        )
+        Spacer(Modifier.height(16.dp))
+        PrimaryButton(
+            text = "Submit feedback",
+            onClick = {
+                error = when {
+                    rating !in 1..5 -> "Choose a rating from 1 to 5 stars."
+                    comment.length > 500 -> "Comment must be 500 characters or fewer."
+                    else -> null
+                }
+                if (error == null) onSubmit(rating, comment)
+            },
+        )
+        TextButton(
+            onClick = onDismiss,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Cancel")
+        }
+    }
 }

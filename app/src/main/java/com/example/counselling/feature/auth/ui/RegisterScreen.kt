@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -38,10 +37,10 @@ import com.example.counselling.core.SessionManager
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.AppTopBar
-import com.example.counselling.ui.components.DropdownField
 import com.example.counselling.ui.components.InfoCard
 import com.example.counselling.ui.components.PrimaryButton
-import com.example.counselling.ui.components.SecondaryButton
+import com.example.counselling.ui.components.SegmentedChoiceField
+import com.example.counselling.ui.components.StickyBottomAction
 import com.example.counselling.ui.components.showAppMessage
 
 @Composable
@@ -146,8 +145,6 @@ private fun RegisterScreen(
                     .weight(1f)
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .imePadding()
-                    .navigationBarsPadding()
                     .padding(horizontal = 24.dp, vertical = 8.dp),
             ) {
                 Text(
@@ -158,7 +155,7 @@ private fun RegisterScreen(
                     text = "Create a student account to book counselling and use the self-help library.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp, bottom = 20.dp),
+                    modifier = Modifier.padding(top = 6.dp, bottom = 18.dp),
                 )
 
                 AppTextField(
@@ -167,6 +164,7 @@ private fun RegisterScreen(
                     label = "Full name",
                     enabled = !state.isLoading,
                     error = state.fullNameError,
+                    imeAction = ImeAction.Next,
                     onFocusLost = onFullNameBlur,
                 )
                 Spacer(Modifier.height(10.dp))
@@ -176,6 +174,7 @@ private fun RegisterScreen(
                     label = "Student ID",
                     enabled = !state.isLoading,
                     error = state.studentIdError,
+                    imeAction = ImeAction.Next,
                     onFocusLost = onStudentIdBlur,
                 )
                 Spacer(Modifier.height(10.dp))
@@ -185,6 +184,7 @@ private fun RegisterScreen(
                     label = "Programme",
                     enabled = !state.isLoading,
                     error = state.programmeError,
+                    imeAction = ImeAction.Next,
                     onFocusLost = onProgrammeBlur,
                 )
                 Spacer(Modifier.height(10.dp))
@@ -196,6 +196,7 @@ private fun RegisterScreen(
                     error = state.phoneError,
                     supportingText = "For example 012-3456789 or +60123456789",
                     keyboardType = KeyboardType.Phone,
+                    imeAction = ImeAction.Next,
                     onFocusLost = onPhoneBlur,
                 )
                 Spacer(Modifier.height(10.dp))
@@ -206,6 +207,7 @@ private fun RegisterScreen(
                     enabled = !state.isLoading,
                     error = state.emailError,
                     keyboardType = KeyboardType.Email,
+                    imeAction = ImeAction.Next,
                     onFocusLost = onEmailBlur,
                 )
                 Spacer(Modifier.height(10.dp))
@@ -217,6 +219,7 @@ private fun RegisterScreen(
                     isPassword = true,
                     error = state.passwordError,
                     supportingText = "8+ characters with uppercase, lowercase and a number",
+                    imeAction = ImeAction.Next,
                     onFocusLost = onPasswordBlur,
                 )
                 Spacer(Modifier.height(10.dp))
@@ -236,8 +239,8 @@ private fun RegisterScreen(
                     ),
                     onFocusLost = onConfirmPasswordBlur,
                 )
-                Spacer(Modifier.height(10.dp))
-                DropdownField(
+                Spacer(Modifier.height(14.dp))
+                SegmentedChoiceField(
                     label = "Preferred session mode",
                     options = AppConstants.sessionModes.map {
                         AppConstants.sessionModeLabels[it] ?: it
@@ -255,7 +258,17 @@ private fun RegisterScreen(
                     error = state.preferredModeError,
                 )
 
-                Spacer(Modifier.height(20.dp))
+                TextButton(
+                    onClick = onBack,
+                    enabled = !state.isLoading,
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    Text("I already have an account")
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+
+            StickyBottomAction {
                 PrimaryButton(
                     text = "Create my account",
                     onClick = {
@@ -264,13 +277,6 @@ private fun RegisterScreen(
                     },
                     loading = state.isLoading,
                 )
-                Spacer(Modifier.height(8.dp))
-                SecondaryButton(
-                    text = "I already have an account",
-                    onClick = onBack,
-                    enabled = !state.isLoading,
-                )
-                Spacer(Modifier.height(24.dp))
             }
         }
 
@@ -279,8 +285,7 @@ private fun RegisterScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .imePadding()
-                .padding(16.dp),
+                .padding(start = 16.dp, end = 16.dp, bottom = 88.dp),
         )
     }
 }

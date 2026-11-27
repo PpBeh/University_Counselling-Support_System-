@@ -49,7 +49,6 @@ import com.example.counselling.feature.student.domain.StudentRepository
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.ConfirmDialog
-import com.example.counselling.ui.components.DropdownField
 import com.example.counselling.ui.components.FilterChipRow
 import com.example.counselling.ui.components.InfoCard
 import com.example.counselling.ui.components.PrimaryButton
@@ -57,6 +56,7 @@ import com.example.counselling.ui.components.ScreenTitle
 import com.example.counselling.ui.components.SecondaryButton
 import com.example.counselling.ui.components.SectionHeader
 import com.example.counselling.ui.components.SectionLabel
+import com.example.counselling.ui.components.SegmentedChoiceField
 import com.example.counselling.ui.components.StatusChip
 import com.example.counselling.ui.components.UserAvatar
 import com.example.counselling.ui.components.showAppMessage
@@ -228,7 +228,7 @@ private fun ProfileScreen(
                         onFocusLost = onPhoneBlur,
                     )
                     Spacer(Modifier.height(10.dp))
-                    DropdownField(
+                    SegmentedChoiceField(
                         label = "Preferred session mode",
                         options = AppConstants.sessionModes.map {
                             AppConstants.sessionModeLabels[it] ?: it

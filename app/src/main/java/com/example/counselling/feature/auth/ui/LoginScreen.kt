@@ -5,16 +5,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -45,6 +42,7 @@ import com.example.counselling.core.UiMessage
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.PrimaryButton
+import com.example.counselling.ui.components.StickyBottomAction
 import com.example.counselling.ui.components.showAppMessage
 
 @Composable
@@ -99,123 +97,121 @@ private fun LoginScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .imePadding(),
+            .background(MaterialTheme.colorScheme.background),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .statusBarsPadding()
-                .navigationBarsPadding()
-                .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Spacer(Modifier.height(48.dp))
-
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.size(76.dp),
+        Column(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .statusBarsPadding()
+                    .padding(horizontal = 24.dp),
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Outlined.FavoriteBorder,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(36.dp),
+                Spacer(Modifier.height(36.dp))
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        modifier = Modifier.size(76.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Outlined.FavoriteBorder,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(36.dp),
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "A calmer place to start.",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 20.dp),
+                    )
+                    Text(
+                        text = "Book support, find practical resources and talk privately when you are ready.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 8.dp),
                     )
                 }
-            }
 
-            Text(
-                text = "A calmer place to start.",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 24.dp),
-            )
-            Text(
-                text = "Book support, find practical resources and talk privately when you are ready.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 8.dp),
-            )
+                Spacer(Modifier.height(28.dp))
 
-            Spacer(Modifier.height(32.dp))
+                Text(
+                    text = "Welcome back",
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                Text(
+                    text = "Sign in with your student or staff email.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 18.dp),
+                )
 
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 1.dp,
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Text(
-                        text = "Welcome back",
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                    Text(
-                        text = "Sign in with your student or staff email.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 20.dp),
-                    )
-
-                    AppTextField(
-                        value = state.email,
-                        onValueChange = onEmailChange,
-                        label = "Email",
-                        enabled = !state.isLoading,
-                        error = state.emailError,
-                        keyboardType = KeyboardType.Email,
-                        imeAction = ImeAction.Next,
-                        onFocusLost = onEmailBlur,
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    AppTextField(
-                        value = state.password,
-                        onValueChange = onPasswordChange,
-                        label = "Password",
-                        enabled = !state.isLoading,
-                        isPassword = true,
-                        error = state.passwordError,
-                        supportingText = "8+ characters with upper, lower and a number",
-                        imeAction = ImeAction.Done,
-                        keyboardActions = KeyboardActions(
-                            onDone = {
-                                focusManager.clearFocus()
-                                onSignIn()
-                            },
-                        ),
-                        onFocusLost = onPasswordBlur,
-                    )
-                    Spacer(Modifier.height(20.dp))
-                    PrimaryButton(
-                        text = "Sign in",
-                        onClick = {
+                AppTextField(
+                    value = state.email,
+                    onValueChange = onEmailChange,
+                    label = "Email",
+                    enabled = !state.isLoading,
+                    error = state.emailError,
+                    keyboardType = KeyboardType.Email,
+                    imeAction = ImeAction.Next,
+                    onFocusLost = onEmailBlur,
+                )
+                Spacer(Modifier.height(12.dp))
+                AppTextField(
+                    value = state.password,
+                    onValueChange = onPasswordChange,
+                    label = "Password",
+                    enabled = !state.isLoading,
+                    isPassword = true,
+                    error = state.passwordError,
+                    supportingText = "8+ characters with upper, lower and a number",
+                    imeAction = ImeAction.Done,
+                    keyboardActions = KeyboardActions(
+                        onDone = {
                             focusManager.clearFocus()
                             onSignIn()
                         },
-                        loading = state.isLoading,
-                    )
+                    ),
+                    onFocusLost = onPasswordBlur,
+                )
+
+                TextButton(
+                    onClick = onRegister,
+                    modifier = Modifier.padding(top = 6.dp),
+                ) {
+                    Text("New here? Create a student account")
                 }
+
+                Text(
+                    text = "Private by design. Your session is protected by the university counselling service.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 20.dp),
+                )
             }
 
-            TextButton(
-                onClick = onRegister,
-                modifier = Modifier.padding(top = 8.dp),
-            ) {
-                Text("New here? Create a student account")
+            StickyBottomAction {
+                PrimaryButton(
+                    text = "Sign in",
+                    onClick = {
+                        focusManager.clearFocus()
+                        onSignIn()
+                    },
+                    loading = state.isLoading,
+                )
             }
-            Text(
-                text = "Private by design. Your session is protected by the university counselling service.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 8.dp, bottom = 24.dp),
-            )
         }
 
         AppSnackbarHost(
@@ -223,7 +219,7 @@ private fun LoginScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(16.dp),
+                .padding(start = 16.dp, end = 16.dp, bottom = 88.dp),
         )
     }
 }

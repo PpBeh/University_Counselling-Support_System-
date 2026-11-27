@@ -8,8 +8,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -34,12 +32,13 @@ import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.DatePickerField
-import com.example.counselling.ui.components.DropdownField
 import com.example.counselling.ui.components.ErrorState
 import com.example.counselling.ui.components.InfoCard
 import com.example.counselling.ui.components.LoadingShimmer
 import com.example.counselling.ui.components.PrimaryButton
 import com.example.counselling.ui.components.SectionHeader
+import com.example.counselling.ui.components.SegmentedChoiceField
+import com.example.counselling.ui.components.StickyBottomAction
 import com.example.counselling.ui.components.showAppMessage
 import kotlinx.coroutines.delay
 
@@ -122,16 +121,15 @@ private fun SessionRecordFormScreen(
 
                 else -> Column(
                     modifier = Modifier
-                        .fillMaxSize()
+                        .weight(1f)
+                        .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
-                        .imePadding()
-                        .navigationBarsPadding()
                         .padding(horizontal = 20.dp),
                 ) {
                     Text(
                         text = if (state.isEdit) "Session record" else "Add a private record",
                         style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.padding(top = 6.dp),
+                        modifier = Modifier.padding(top = 8.dp),
                     )
                     Text(
                         text = "This is only available after a completed session.",
@@ -191,7 +189,7 @@ private fun SessionRecordFormScreen(
                     )
 
                     Spacer(Modifier.height(16.dp))
-                    DropdownField(
+                    SegmentedChoiceField(
                         label = "Risk level",
                         options = listOf("Low", "Medium", "High"),
                         selected = state.riskLevel.replaceFirstChar { it.uppercase() },
@@ -234,18 +232,20 @@ private fun SessionRecordFormScreen(
                         )
                     }
 
-                    Spacer(Modifier.height(20.dp))
-                    if (!state.readOnly) {
-                        PrimaryButton(
-                            text = if (state.isEdit) "Save record" else "Create record",
-                            onClick = {
-                                focusManager.clearFocus()
-                                onSave()
-                            },
-                            loading = state.isSaving,
-                        )
-                    }
                     Spacer(Modifier.height(24.dp))
+                }
+            }
+
+            if (!state.isLoading && state.loadError == null && !state.readOnly) {
+                StickyBottomAction {
+                    PrimaryButton(
+                        text = if (state.isEdit) "Save record" else "Create record",
+                        onClick = {
+                            focusManager.clearFocus()
+                            onSave()
+                        },
+                        loading = state.isSaving,
+                    )
                 }
             }
         }
@@ -254,9 +254,7 @@ private fun SessionRecordFormScreen(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .imePadding()
-                .padding(16.dp),
+                .padding(start = 16.dp, end = 16.dp, bottom = 96.dp),
         )
     }
 }

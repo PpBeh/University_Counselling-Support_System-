@@ -3,6 +3,7 @@
 // row sheet keeps the same action visible without a gesture.
 package com.example.counselling.feature.enquiry.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,14 +52,18 @@ import com.example.counselling.ui.components.AppBottomSheet
 import com.example.counselling.ui.components.AppListRow
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
+import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.DropdownField
 import com.example.counselling.ui.components.EmptyState
 import com.example.counselling.ui.components.ErrorState
 import com.example.counselling.ui.components.FilterChipRow
 import com.example.counselling.ui.components.InfoCard
 import com.example.counselling.ui.components.LoadingShimmer
+import com.example.counselling.ui.components.PrimaryButton
 import com.example.counselling.ui.components.SecondaryButton
+import com.example.counselling.ui.components.SegmentedChoiceField
 import com.example.counselling.ui.components.StatusChip
+import com.example.counselling.ui.components.StickyBottomAction
 import com.example.counselling.ui.components.StickyListHeader
 import com.example.counselling.ui.components.SwipeAction
 import com.example.counselling.ui.components.SwipeRevealRow
@@ -110,6 +115,24 @@ private fun CounsellorInboxScreen(
         } else {
             state.enquiries.filter { it.status.code == state.statusFilter.lowercase() }
         }
+    }
+
+    BackHandler(enabled = replyTarget != null) {
+        replyTarget = null
+    }
+
+    replyTarget?.let { enquiry ->
+        ReplyFormScreen(
+            enquiry = enquiry,
+            resources = state.publishedResources.map { it.id to it.title },
+            snackbarHostState = snackbarHostState,
+            onClose = { replyTarget = null },
+            onSave = { reply, status, resourceId ->
+                onReply(enquiry, reply, status, resourceId)
+                replyTarget = null
+            },
+        )
+        return
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -239,18 +262,6 @@ private fun CounsellorInboxScreen(
             },
         )
     }
-
-    replyTarget?.let { enquiry ->
-        ReplyDialog(
-            enquiry = enquiry,
-            resources = state.publishedResources.map { it.id to it.title },
-            onDismiss = { replyTarget = null },
-            onSave = { reply, status, resourceId ->
-                onReply(enquiry, reply, status, resourceId)
-                replyTarget = null
-            },
-        )
-    }
 }
 
 @Composable
@@ -347,10 +358,11 @@ private fun InboxDetailSheet(
 }
 
 @Composable
-private fun ReplyDialog(
+private fun ReplyFormScreen(
     enquiry: Enquiry,
     resources: List<Pair<String, String>>,
-    onDismiss: () -> Unit,
+    snackbarHostState: SnackbarHostState,
+    onClose: () -> Unit,
     onSave: (String, String, String?) -> Unit,
 ) {
     var reply by remember(enquiry.id) { mutableStateOf(enquiry.reply.orEmpty()) }
@@ -365,17 +377,32 @@ private fun ReplyDialog(
     }
     var error by remember { mutableStateOf<String?>(null) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (enquiry.isAnonymous) "Anonymous enquiry" else "Student enquiry") },
-        text = {
-            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            AppTopBar(
+                title = if (enquiry.isAnonymous) "Reply anonymously" else "Reply to student",
+                onBack = onClose,
+            )
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp),
+            ) {
+                Text(
+                    text = "${enquiry.referenceCode} · ${enquiry.category.label}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
                 Text(
                     text = enquiry.message,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp, bottom = 16.dp),
                 )
-                Spacer(Modifier.height(12.dp))
                 AppTextField(
                     value = reply,
                     onValueChange = {
@@ -384,18 +411,18 @@ private fun ReplyDialog(
                     },
                     label = "Reply",
                     singleLine = false,
-                    maxLines = 6,
+                    maxLines = 8,
                     supportingText = "${reply.length}/2000",
                     error = error,
                 )
-                Spacer(Modifier.height(10.dp))
-                DropdownField(
+                Spacer(Modifier.height(16.dp))
+                SegmentedChoiceField(
                     label = "Status",
                     options = listOf("Open", "Answered", "Closed"),
                     selected = status.replaceFirstChar { it.uppercase() },
                     onSelect = { status = it.lowercase() },
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(14.dp))
                 DropdownField(
                     label = "Attach a published resource (optional)",
                     options = listOf("No attached resource") + resources.map { it.second },
@@ -403,37 +430,42 @@ private fun ReplyDialog(
                     onSelect = { resourceLabel = it },
                 )
                 if (enquiry.isAnonymous) {
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(14.dp))
                     InfoCard(
                         title = "Anonymous",
                         body = "You cannot identify this student. Reply through the app; they can check it with their reference code.",
                     )
                 }
+                Spacer(Modifier.height(24.dp))
             }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    error = when {
-                        status == "answered" && reply.isBlank() ->
-                            "Write a reply before marking this as answered."
-                        reply.length > 2000 -> "Reply must be 2,000 characters or fewer."
-                        else -> null
-                    }
-                    if (error == null) {
-                        val resourceId = resources
-                            .firstOrNull { it.second == resourceLabel }
-                            ?.first
-                        onSave(reply, status, resourceId)
-                    }
-                },
-            ) {
-                Text("Save reply")
+
+            StickyBottomAction {
+                PrimaryButton(
+                    text = "Save reply",
+                    onClick = {
+                        error = when {
+                            status == "answered" && reply.isBlank() ->
+                                "Write a reply before marking this as answered."
+                            reply.length > 2000 -> "Reply must be 2,000 characters or fewer."
+                            else -> null
+                        }
+                        if (error == null) {
+                            val resourceId = resources
+                                .firstOrNull { it.second == resourceLabel }
+                                ?.first
+                            onSave(reply, status, resourceId)
+                        }
+                    },
+                )
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-        shape = MaterialTheme.shapes.large,
-    )
+        }
+
+        AppSnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(start = 16.dp, end = 16.dp, bottom = 96.dp),
+        )
+    }
 }

@@ -25,7 +25,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
@@ -60,6 +59,7 @@ import com.example.counselling.core.domain.User
 import com.example.counselling.feature.appointment.domain.Appointment
 import com.example.counselling.feature.appointment.domain.AppointmentRepository
 import com.example.counselling.feature.enquiry.domain.FeedbackRepository
+import com.example.counselling.ui.components.AppBottomSheet
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.ConfirmDialog
@@ -67,6 +67,7 @@ import com.example.counselling.ui.components.EmptyState
 import com.example.counselling.ui.components.ErrorState
 import com.example.counselling.ui.components.FilterChipRow
 import com.example.counselling.ui.components.LoadingShimmer
+import com.example.counselling.ui.components.PrimaryButton
 import com.example.counselling.ui.components.ScreenTitle
 import com.example.counselling.ui.components.StarRating
 import com.example.counselling.ui.components.StickyListHeader
@@ -495,68 +496,67 @@ private fun SessionRatingDialog(
     }
     var error by remember { mutableStateOf<String?>(null) }
 
-    AlertDialog(
+    AppBottomSheet(
         onDismissRequest = onDismiss,
-        title = {
-            Text(if (existing == null) "Rate your session" else "Update your rating")
-        },
-        text = {
-            Column {
-                Text(
-                    text = "${appointment.counsellorName} · " +
-                        DateTimeUtils.formatDate(appointment.slotStart),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    text = "How was this session?",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                StarRating(
-                    rating = rating,
-                    onRatingChange = {
-                        rating = it
-                        error = null
-                    },
-                    starSize = 36.dp,
-                    modifier = Modifier.padding(vertical = 4.dp),
-                )
-                AppTextField(
-                    value = comment,
-                    onValueChange = {
-                        comment = it
-                        error = null
-                    },
-                    label = "Comment (optional)",
-                    singleLine = false,
-                    maxLines = 3,
-                    error = error,
-                    supportingText = "Maximum 500 characters.",
-                    enabled = !isSubmitting,
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    when {
-                        rating !in 1..5 -> error = "Choose a rating from 1 to 5 stars."
-                        comment.length > 500 -> error = "Comment must be 500 characters or fewer."
-                        else -> onSubmit(rating, comment)
-                    }
-                },
-                enabled = !isSubmitting,
-            ) {
-                Text(if (existing == null) "Submit" else "Update")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isSubmitting) {
-                Text("Cancel")
-            }
-        },
-    )
+        title = if (existing == null) "Rate your session" else "Update your rating",
+    ) {
+        Text(
+            text = "${appointment.counsellorName} · " +
+                DateTimeUtils.formatDate(appointment.slotStart),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = "How was this session?",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        StarRating(
+            rating = rating,
+            onRatingChange = {
+                rating = it
+                error = null
+            },
+            starSize = 40.dp,
+            modifier = Modifier.padding(vertical = 4.dp),
+        )
+        AppTextField(
+            value = comment,
+            onValueChange = {
+                comment = it
+                error = null
+            },
+            label = "Comment (optional)",
+            singleLine = false,
+            maxLines = 3,
+            error = error,
+            supportingText = "Maximum 500 characters.",
+            enabled = !isSubmitting,
+        )
+        Spacer(Modifier.height(16.dp))
+        PrimaryButton(
+            text = when {
+                isSubmitting -> "Saving…"
+                existing == null -> "Submit"
+                else -> "Update"
+            },
+            onClick = {
+                when {
+                    rating !in 1..5 -> error = "Choose a rating from 1 to 5 stars."
+                    comment.length > 500 -> error = "Comment must be 500 characters or fewer."
+                    else -> onSubmit(rating, comment)
+                }
+            },
+            enabled = !isSubmitting,
+        )
+        TextButton(
+            onClick = onDismiss,
+            enabled = !isSubmitting,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Cancel")
+        }
+    }
 }
 
 private fun String.toApiStatus(): AppointmentStatus? = when (this) {

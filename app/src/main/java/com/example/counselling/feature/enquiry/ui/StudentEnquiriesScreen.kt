@@ -5,6 +5,7 @@ package com.example.counselling.feature.enquiry.ui
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
@@ -70,6 +71,7 @@ import com.example.counselling.ui.components.AppBottomSheet
 import com.example.counselling.ui.components.AppListRow
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
+import com.example.counselling.ui.components.AppTopBar
 import com.example.counselling.ui.components.ConfirmDialog
 import com.example.counselling.ui.components.DropdownField
 import com.example.counselling.ui.components.EmptyState
@@ -79,6 +81,7 @@ import com.example.counselling.ui.components.PrimaryButton
 import com.example.counselling.ui.components.SecondaryButton
 import com.example.counselling.ui.components.SectionLabel
 import com.example.counselling.ui.components.StatusChip
+import com.example.counselling.ui.components.StickyBottomAction
 import com.example.counselling.ui.components.StickyListHeader
 import com.example.counselling.ui.components.SwipeAction
 import com.example.counselling.ui.components.SwipeRevealRow
@@ -163,6 +166,48 @@ private fun StudentEnquiriesScreen(
         if (state.lastReferenceCode != null) {
             showForm = false
         }
+    }
+
+    BackHandler(enabled = showForm) {
+        if (!state.isSubmitting) showForm = false
+    }
+
+    if (showForm) {
+        NewEnquiryForm(
+            category = category,
+            message = message,
+            anonymous = anonymous,
+            categoryError = categoryError,
+            messageError = messageError,
+            isSubmitting = state.isSubmitting,
+            snackbarHostState = snackbarHostState,
+            onCategoryChange = {
+                category = it
+                categoryError = null
+            },
+            onMessageChange = {
+                message = it
+                messageError = null
+            },
+            onAnonymousChange = { anonymous = it },
+            onClose = { if (!state.isSubmitting) showForm = false },
+            onSubmit = {
+                categoryError = if (category in AppConstants.concernCategories) {
+                    null
+                } else {
+                    "Choose a category."
+                }
+                messageError = when {
+                    message.trim().length < 10 -> "Write at least 10 characters."
+                    message.trim().length > 1000 -> "Use 1,000 characters or fewer."
+                    else -> null
+                }
+                if (categoryError == null && messageError == null) {
+                    onSubmit(category, message, anonymous)
+                }
+            },
+        )
+        return
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -395,89 +440,6 @@ private fun StudentEnquiriesScreen(
         )
     }
 
-    if (showForm) {
-        AlertDialog(
-            onDismissRequest = { if (!state.isSubmitting) showForm = false },
-            title = { Text("Ask a private question") },
-            text = {
-                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                    DropdownField(
-                        label = "Concern category",
-                        options = AppConstants.concernCategories,
-                        selected = category,
-                        onSelect = {
-                            category = it
-                            categoryError = null
-                        },
-                        enabled = !state.isSubmitting,
-                        error = categoryError,
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    AppTextField(
-                        value = message,
-                        onValueChange = {
-                            message = it
-                            messageError = null
-                        },
-                        label = "Your question",
-                        singleLine = false,
-                        maxLines = 6,
-                        error = messageError,
-                        supportingText = "${message.length}/1000 · minimum 10 characters",
-                        enabled = !state.isSubmitting,
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Ask anonymously", style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                "No name or student ID is stored. Keep the reference code.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Switch(
-                            checked = anonymous,
-                            onCheckedChange = { anonymous = it },
-                            enabled = !state.isSubmitting,
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        categoryError = if (category in AppConstants.concernCategories) {
-                            null
-                        } else {
-                            "Choose a category."
-                        }
-                        messageError = when {
-                            message.trim().length < 10 -> "Write at least 10 characters."
-                            message.trim().length > 1000 -> "Use 1,000 characters or fewer."
-                            else -> null
-                        }
-                        if (categoryError == null && messageError == null) {
-                            onSubmit(category, message, anonymous)
-                        }
-                    },
-                    enabled = !state.isSubmitting,
-                ) {
-                    Text(if (state.isSubmitting) "Sending…" else "Send question")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showForm = false }, enabled = !state.isSubmitting) {
-                    Text("Cancel")
-                }
-            },
-            shape = MaterialTheme.shapes.large,
-        )
-    }
-
     state.lastReferenceCode?.let { code ->
         AlertDialog(
             onDismissRequest = onDismissReference,
@@ -687,5 +649,103 @@ private fun LookupResultSection(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun NewEnquiryForm(
+    category: String,
+    message: String,
+    anonymous: Boolean,
+    categoryError: String?,
+    messageError: String?,
+    isSubmitting: Boolean,
+    snackbarHostState: SnackbarHostState,
+    onCategoryChange: (String) -> Unit,
+    onMessageChange: (String) -> Unit,
+    onAnonymousChange: (Boolean) -> Unit,
+    onClose: () -> Unit,
+    onSubmit: () -> Unit,
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            AppTopBar(title = "New enquiry", onBack = onClose)
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp),
+            ) {
+                Text(
+                    text = "Ask a private question",
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                Text(
+                    text = "Choose whether your name is attached. Anonymous enquiries can only be checked with the reference code.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp, bottom = 18.dp),
+                )
+
+                DropdownField(
+                    label = "Concern category",
+                    options = AppConstants.concernCategories,
+                    selected = category,
+                    onSelect = onCategoryChange,
+                    enabled = !isSubmitting,
+                    error = categoryError,
+                )
+                Spacer(Modifier.height(12.dp))
+                AppTextField(
+                    value = message,
+                    onValueChange = onMessageChange,
+                    label = "Your question",
+                    singleLine = false,
+                    maxLines = 6,
+                    error = messageError,
+                    supportingText = "${message.length}/1000 · minimum 10 characters",
+                    enabled = !isSubmitting,
+                )
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Ask anonymously", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "No name or student ID is stored. Keep the reference code.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = anonymous,
+                        onCheckedChange = onAnonymousChange,
+                        enabled = !isSubmitting,
+                    )
+                }
+                Spacer(Modifier.height(24.dp))
+            }
+
+            StickyBottomAction {
+                PrimaryButton(
+                    text = if (isSubmitting) "Sending…" else "Send question",
+                    onClick = onSubmit,
+                    loading = isSubmitting,
+                )
+            }
+        }
+
+        AppSnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(start = 16.dp, end = 16.dp, bottom = 96.dp),
+        )
     }
 }

@@ -9,10 +9,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -25,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -39,6 +39,7 @@ import com.example.counselling.ui.components.InfoCard
 import com.example.counselling.ui.components.LoadingShimmer
 import com.example.counselling.ui.components.PrimaryButton
 import com.example.counselling.ui.components.SectionHeader
+import com.example.counselling.ui.components.StickyBottomAction
 import com.example.counselling.ui.components.showAppMessage
 import kotlinx.coroutines.delay
 
@@ -114,10 +115,9 @@ private fun CounsellorFormScreen(
 
                 else -> Column(
                     modifier = Modifier
-                        .fillMaxSize()
+                        .weight(1f)
+                        .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
-                        .imePadding()
-                        .navigationBarsPadding()
                         .padding(horizontal = 20.dp),
                 ) {
                     Text(
@@ -127,7 +127,7 @@ private fun CounsellorFormScreen(
                             "Create the directory entry first."
                         },
                         style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.padding(top = 6.dp),
+                        modifier = Modifier.padding(top = 8.dp),
                     )
                     Text(
                         text = "The counsellor role is assigned automatically when a matching Auth account signs up.",
@@ -142,6 +142,7 @@ private fun CounsellorFormScreen(
                         label = "Full name",
                         error = state.fullNameError,
                         enabled = !state.isSaving,
+                        imeAction = ImeAction.Next,
                     )
                     Spacer(Modifier.height(10.dp))
                     AppTextField(
@@ -151,6 +152,7 @@ private fun CounsellorFormScreen(
                         error = state.emailError,
                         keyboardType = KeyboardType.Email,
                         enabled = !state.isSaving,
+                        imeAction = ImeAction.Next,
                     )
                     Spacer(Modifier.height(16.dp))
                     SectionHeader(
@@ -193,6 +195,7 @@ private fun CounsellorFormScreen(
                         error = state.languagesError,
                         supportingText = "Comma-separated, for example English, Bahasa Malaysia",
                         enabled = !state.isSaving,
+                        imeAction = ImeAction.Next,
                     )
                     Spacer(Modifier.height(10.dp))
                     AppTextField(
@@ -204,15 +207,10 @@ private fun CounsellorFormScreen(
                         singleLine = false,
                         maxLines = 4,
                         enabled = !state.isSaving,
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    PrimaryButton(
-                        text = if (state.isEdit) "Save changes" else "Add counsellor",
-                        onClick = {
-                            focusManager.clearFocus()
-                            onSave()
-                        },
-                        loading = state.isSaving,
+                        imeAction = ImeAction.Done,
+                        keyboardActions = KeyboardActions(
+                            onDone = { focusManager.clearFocus() },
+                        ),
                     )
                     Spacer(Modifier.height(16.dp))
                     InfoCard(
@@ -222,15 +220,26 @@ private fun CounsellorFormScreen(
                     Spacer(Modifier.height(24.dp))
                 }
             }
+
+            if (!state.isLoading && state.loadError == null) {
+                StickyBottomAction {
+                    PrimaryButton(
+                        text = if (state.isEdit) "Save changes" else "Add counsellor",
+                        onClick = {
+                            focusManager.clearFocus()
+                            onSave()
+                        },
+                        loading = state.isSaving,
+                    )
+                }
+            }
         }
 
         AppSnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .imePadding()
-                .padding(16.dp),
+                .padding(start = 16.dp, end = 16.dp, bottom = 96.dp),
         )
     }
 }

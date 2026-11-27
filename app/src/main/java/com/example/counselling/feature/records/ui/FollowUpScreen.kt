@@ -4,12 +4,10 @@ package com.example.counselling.feature.records.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -42,9 +40,9 @@ import com.example.counselling.ui.components.ErrorState
 import com.example.counselling.ui.components.InfoCard
 import com.example.counselling.ui.components.LoadingShimmer
 import com.example.counselling.ui.components.PrimaryButton
-import com.example.counselling.ui.components.SecondaryButton
 import com.example.counselling.ui.components.SectionHeader
 import com.example.counselling.ui.components.SessionSlotPicker
+import com.example.counselling.ui.components.StickyBottomAction
 import com.example.counselling.ui.components.TimeSlotChoice
 import com.example.counselling.ui.components.showAppMessage
 
@@ -124,9 +122,9 @@ fun FollowUpRoute(
                     }
                     Column(
                         modifier = Modifier
-                            .fillMaxSize()
+                            .weight(1f)
+                            .fillMaxWidth()
                             .verticalScroll(rememberScrollState())
-                            .navigationBarsPadding()
                             .padding(horizontal = 20.dp),
                     ) {
                         InfoCard(
@@ -164,7 +162,12 @@ fun FollowUpRoute(
                                 onClearSelection = viewModel::clearSlot,
                                 modifier = Modifier.padding(top = 8.dp),
                             )
-                            Spacer(Modifier.height(18.dp))
+                        }
+                        Spacer(Modifier.height(24.dp))
+                    }
+
+                    if (choices.isNotEmpty()) {
+                        StickyBottomAction {
                             PrimaryButton(
                                 text = "Send follow-up request",
                                 onClick = viewModel::submit,
@@ -172,7 +175,6 @@ fun FollowUpRoute(
                                 loading = state.isSubmitting,
                             )
                         }
-                        Spacer(Modifier.height(24.dp))
                     }
                 }
             }
@@ -182,8 +184,7 @@ fun FollowUpRoute(
             hostState = snackbarState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(16.dp),
+                .padding(start = 16.dp, end = 16.dp, bottom = 96.dp),
         )
     }
 }

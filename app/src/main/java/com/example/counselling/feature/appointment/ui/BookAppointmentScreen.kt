@@ -1,7 +1,17 @@
 // Module 2 | Owner: Beh
 // Single booking flow: concern -> Smart Match counsellors -> free slot -> RPC.
+// Each step is a full screen with one decision and a pinned primary action.
 package com.example.counselling.feature.appointment.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -13,20 +23,21 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.Schedule
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -38,6 +49,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -52,16 +66,16 @@ import com.example.counselling.feature.appointment.domain.CounsellorMatch
 import com.example.counselling.ui.components.AppSnackbarHost
 import com.example.counselling.ui.components.AppTextField
 import com.example.counselling.ui.components.AppTopBar
-import com.example.counselling.ui.components.DropdownField
 import com.example.counselling.ui.components.EmptyState
 import com.example.counselling.ui.components.ErrorState
 import com.example.counselling.ui.components.InfoCard
 import com.example.counselling.ui.components.LoadingShimmer
 import com.example.counselling.ui.components.PrimaryButton
-import com.example.counselling.ui.components.SecondaryButton
-import com.example.counselling.ui.components.SectionHeader
+import com.example.counselling.ui.components.SegmentedChoiceField
+import com.example.counselling.ui.components.StickyBottomAction
 import com.example.counselling.ui.components.showAppMessage
-import java.time.LocalDate
+import java.time.format.TextStyle
+import java.util.Locale
 
 @Composable
 fun BookAppointmentRoute(
@@ -93,44 +107,105 @@ fun BookAppointmentRoute(
         }
     }
 
+    // Local choices let each step show a disabled Continue until the user has
+    // made the single decision for that screen.
+    var selectedConcern by remember(state.step) { mutableStateOf(state.concern) }
+    var selectedMatchId by remember(state.step) {
+        mutableStateOf(state.selectedMatch?.counsellorId)
+    }
+
+    val progress = when (state.step) {
+        BookingStep.CONCERN -> 0.25f
+        BookingStep.MATCHES -> 0.5f
+        BookingStep.SLOTS -> 0.75f
+        BookingStep.SUCCESS -> 1f
+    }
+
+    BackHandler(onBack = onBack)
+
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             AppTopBar(
                 title = when (state.step) {
                     BookingStep.CONCERN -> "Book a session"
-                    BookingStep.MATCHES -> "Smart counsellor match"
+                    BookingStep.MATCHES -> "Counsellor match"
                     BookingStep.SLOTS -> "Choose a time"
                     BookingStep.SUCCESS -> "Request sent"
                 },
                 onBack = onBack,
             )
 
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp),
+            )
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+            ) {
+                when (state.step) {
+                    BookingStep.CONCERN -> ConcernStep(
+                        selected = selectedConcern,
+                        onSelect = { selectedConcern = it },
+                    )
+
+                    BookingStep.MATCHES -> MatchStep(
+                        state = state,
+                        selectedMatchId = selectedMatchId,
+                        onSelect = { selectedMatchId = it.counsellorId },
+                        onRetry = viewModel::retryMatches,
+                        onChangeConcern = viewModel::backToConcern,
+                    )
+
+                    BookingStep.SLOTS -> SlotStep(
+                        state = state,
+                        onChooseSlot = viewModel::chooseSlot,
+                        onClearSlot = viewModel::clearSlot,
+                        onRetrySlots = viewModel::retrySlots,
+                        onModeChange = viewModel::setMode,
+                        onNoteChange = viewModel::setNote,
+                    )
+
+                    BookingStep.SUCCESS -> SuccessStep(state = state)
+                }
+            }
+
             when (state.step) {
-                BookingStep.CONCERN -> ConcernStep(
-                    onChoose = viewModel::chooseConcern,
-                )
+                BookingStep.CONCERN -> StickyBottomAction {
+                    PrimaryButton(
+                        text = "Continue",
+                        enabled = selectedConcern != null,
+                        onClick = { selectedConcern?.let(viewModel::chooseConcern) },
+                    )
+                }
 
-                BookingStep.MATCHES -> MatchStep(
-                    state = state,
-                    onRetry = viewModel::retryMatches,
-                    onChoose = viewModel::chooseCounsellor,
-                    onChangeConcern = viewModel::backToConcern,
-                )
+                BookingStep.MATCHES -> StickyBottomAction {
+                    val selectedMatch = state.matches.firstOrNull {
+                        it.counsellorId == selectedMatchId
+                    }
+                    PrimaryButton(
+                        text = "Continue",
+                        enabled = selectedMatch != null,
+                        onClick = { selectedMatch?.let(viewModel::chooseCounsellor) },
+                    )
+                }
 
-                BookingStep.SLOTS -> SlotStep(
-                    state = state,
-                    onChooseSlot = viewModel::chooseSlot,
-                    onClearSlot = viewModel::clearSlot,
-                    onRetrySlots = viewModel::retrySlots,
-                    onModeChange = viewModel::setMode,
-                    onNoteChange = viewModel::setNote,
-                    onBook = viewModel::book,
-                )
+                BookingStep.SLOTS -> StickyBottomAction {
+                    PrimaryButton(
+                        text = "Confirm appointment",
+                        enabled = state.selectedSlotId != null,
+                        loading = state.isBooking,
+                        onClick = viewModel::book,
+                    )
+                }
 
-                BookingStep.SUCCESS -> SuccessStep(
-                    state = state,
-                    onDone = onClose,
-                )
+                BookingStep.SUCCESS -> StickyBottomAction {
+                    PrimaryButton(text = "View my appointments", onClick = onClose)
+                }
             }
         }
 
@@ -139,101 +214,105 @@ fun BookAppointmentRoute(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .imePadding()
-                .padding(16.dp),
+                .padding(start = 16.dp, end = 16.dp, bottom = 96.dp),
         )
     }
 }
 
 @Composable
-private fun ConcernStep(onChoose: (String) -> Unit) {
+private fun ConcernStep(
+    selected: String?,
+    onSelect: (String) -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .navigationBarsPadding()
             .padding(horizontal = 20.dp),
     ) {
         Text(
             text = "What would you like support with?",
             style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.padding(top = 8.dp),
-        )
-        Text(
-            text = "We use this only to match you with counsellors who list this concern as a specialisation.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 6.dp, bottom = 18.dp),
-        )
-
-        AppConstants.concernCategories.chunked(2).forEach { rowItems ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                rowItems.forEach { concern ->
-                    Surface(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { onChoose(concern) },
-                        shape = MaterialTheme.shapes.medium,
-                        color = MaterialTheme.colorScheme.surface,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    ) {
-                        Text(
-                            text = concern,
-                            style = MaterialTheme.typography.titleSmall,
-                            modifier = Modifier.padding(16.dp),
-                        )
-                    }
-                }
-                if (rowItems.size == 1) Spacer(Modifier.weight(1f))
-            }
-        }
-
-        InfoCard(
-            title = "Not sure what to choose?",
-            body = "Choose the closest concern. You can talk about anything in the session, and you can contact the counselling office if you need help.",
             modifier = Modifier.padding(top = 12.dp),
         )
-        Spacer(Modifier.height(24.dp))
+        Text(
+            text = "Choose one concern. It only decides which counsellors are matched to you.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp, bottom = 16.dp),
+        )
+
+        AppConstants.concernCategories.forEach { concern ->
+            val isSelected = concern == selected
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 60.dp)
+                    .clickable { onSelect(concern) },
+                shape = MaterialTheme.shapes.medium,
+                color = if (isSelected) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                },
+                border = if (isSelected) {
+                    BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
+                } else {
+                    null
+                },
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = concern,
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    RadioButton(selected = isSelected, onClick = null)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+        Spacer(Modifier.height(12.dp))
     }
 }
 
 @Composable
 private fun MatchStep(
     state: BookAppointmentUiState,
+    selectedMatchId: String?,
+    onSelect: (CounsellorMatch) -> Unit,
     onRetry: () -> Unit,
-    onChoose: (CounsellorMatch) -> Unit,
     onChangeConcern: () -> Unit,
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .navigationBarsPadding()
             .padding(horizontal = 20.dp),
     ) {
         Text(
             text = "Best matches for ${state.concern ?: "your concern"}",
             style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.padding(top = 8.dp),
+            modifier = Modifier.padding(top = 12.dp),
         )
         Text(
-            text = "Ranked by the earliest free slot. The first counsellor is your best match.",
+            text = "Ranked by the earliest free slot. Choose one counsellor to see their times.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 6.dp, bottom = 16.dp),
+            modifier = Modifier.padding(top = 6.dp, bottom = 14.dp),
         )
 
         when {
             state.isLoadingMatches -> LoadingShimmer(rows = 3)
+
             state.loadError != null -> ErrorState(
                 message = state.loadError,
                 onRetry = onRetry,
             )
+
             state.matches.isEmpty() -> EmptyState(
                 icon = Icons.Outlined.Person,
                 title = "No counsellor matches yet",
@@ -241,62 +320,73 @@ private fun MatchStep(
                 actionLabel = "Change concern",
                 onAction = onChangeConcern,
             )
+
             else -> state.matches.forEachIndexed { index, match ->
-                MatchCard(
+                MatchRow(
+                    rank = index + 1,
                     match = match,
-                    isBestMatch = index == 0,
-                    onClick = { onChoose(match) },
+                    selected = match.counsellorId == selectedMatchId,
+                    onClick = { onSelect(match) },
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
             }
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(16.dp))
     }
 }
 
 @Composable
-private fun MatchCard(
+private fun MatchRow(
+    rank: Int,
     match: CounsellorMatch,
-    isBestMatch: Boolean,
+    selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val reason = buildString {
+        append("Specialises in ")
+        append(match.specialisationLabels.joinToString(", "))
+        if (match.languages.isNotEmpty()) {
+            append(" · Speaks ")
+            append(match.languages.joinToString(", "))
+        }
+    }
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = MaterialTheme.shapes.large,
-        color = if (isBestMatch) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+        shape = MaterialTheme.shapes.medium,
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer
         } else {
-            MaterialTheme.colorScheme.surface
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
         },
-        border = if (isBestMatch) {
+        border = if (selected) {
             BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
         } else {
             null
         },
     ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(46.dp),
+                    color = if (rank == 1) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.surface
+                    },
+                    modifier = Modifier.size(36.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
-                            text = match.counsellorName
-                                .split(" ")
-                                .filter { it.isNotBlank() }
-                                .takeLast(1)
-                                .joinToString("")
-                                .take(1)
-                                .uppercase(),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onPrimary,
+                            text = rank.toString(),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = if (rank == 1) {
+                                MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
                         )
                     }
                 }
@@ -305,53 +395,44 @@ private fun MatchCard(
                         .padding(start = 12.dp)
                         .weight(1f),
                 ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = match.counsellorName,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (rank == 1) {
+                            Surface(
+                                shape = MaterialTheme.shapes.small,
+                                color = MaterialTheme.colorScheme.primary,
+                            ) {
+                                Text(
+                                    text = "Best match",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                )
+                            }
+                        }
+                    }
                     Text(
-                        text = match.counsellorName,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = match.specialisationLabels.joinToString(" · "),
+                        text = reason,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp),
                     )
-                    if (match.languages.isNotEmpty()) {
-                        Text(
-                            text = "Speaks ${match.languages.joinToString(", ")}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 2.dp),
-                        )
-                    }
-                }
-                if (isBestMatch) {
-                    Surface(
-                        shape = MaterialTheme.shapes.small,
+                    Text(
+                        text = "Next free: ${DateTimeUtils.formatDateTime(match.nextSlotStart)}",
+                        style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
-                    ) {
-                        Text(
-                            text = "Best match",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                        )
-                    }
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Outlined.Schedule,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(17.dp),
-                )
-                Text(
-                    text = "Next free: ${DateTimeUtils.formatDateTime(match.nextSlotStart)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(start = 6.dp),
-                )
+                RadioButton(selected = selected, onClick = null)
             }
             if (match.bio.isNotBlank()) {
                 Text(
@@ -363,12 +444,6 @@ private fun MatchCard(
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }
-            Text(
-                text = "Tap to choose a time",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(top = 10.dp),
-            )
         }
     }
 }
@@ -381,7 +456,6 @@ private fun SlotStep(
     onRetrySlots: () -> Unit,
     onModeChange: (String) -> Unit,
     onNoteChange: (String) -> Unit,
-    onBook: () -> Unit,
 ) {
     val match = state.selectedMatch ?: return
     if (state.isLoadingSlots) {
@@ -394,7 +468,7 @@ private fun SlotStep(
                 text = "Loading ${match.counsellorName}'s timetable…",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 12.dp, bottom = 14.dp),
+                modifier = Modifier.padding(top = 16.dp, bottom = 14.dp),
             )
             LoadingShimmer(rows = 4)
         }
@@ -404,6 +478,7 @@ private fun SlotStep(
         ErrorState(message = state.slotsError, onRetry = onRetrySlots)
         return
     }
+
     val grouped = state.slots.groupBy { DateTimeUtils.formatDate(it.startAt) }
     var selectedDate by remember(match.counsellorId) {
         mutableStateOf(grouped.keys.firstOrNull())
@@ -416,103 +491,105 @@ private fun SlotStep(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .imePadding()
-            .navigationBarsPadding()
             .padding(horizontal = 20.dp),
     ) {
         Text(
             text = "Choose a time with ${match.counsellorName}",
             style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.padding(top = 8.dp),
+            modifier = Modifier.padding(top = 12.dp),
         )
         Text(
-            text = "All times are in Kuala Lumpur time. Your concern: ${state.concern}.",
+            text = "All times are in Kuala Lumpur time.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 6.dp, bottom = 16.dp),
+            modifier = Modifier.padding(top = 6.dp, bottom = 14.dp),
         )
 
-        SectionHeader(
-            title = "Choose a date",
-            subtitle = "Step 1 of 2 · pick the day that works for you",
-        )
         if (grouped.isEmpty()) {
             InfoCard(
                 title = "No free slots right now",
                 body = "This counsellor has no upcoming free slots. Go back and choose another match.",
             )
-        } else {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(top = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                grouped.keys.forEach { date ->
-                    val freeOnDay = grouped[date].orEmpty().count { !it.isBooked }
-                    FilterChip(
-                        selected = date == activeDate,
-                        onClick = {
-                            if (selectedDate != date) {
-                                selectedDate = date
-                                onClearSlot()
-                            }
-                        },
-                        label = {
-                            Text(if (freeOnDay == 0) "$date · Full" else date)
-                        },
-                    )
-                }
-            }
+            Spacer(Modifier.height(16.dp))
+            return@Column
+        }
 
-            Spacer(Modifier.height(18.dp))
-            SectionHeader(
-                title = "Available times",
-                subtitle = activeDate?.let { "Step 2 of 2 · choose a $it slot" },
-            )
-            Spacer(Modifier.height(10.dp))
-
-            val freeOnDate = visibleSlots.count { !it.isBooked }
-            if (visibleSlots.isEmpty()) {
-                InfoCard(
-                    title = "No times on this date",
-                    body = "Choose another date above.",
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            grouped.forEach { (date, slots) ->
+                val start = slots.firstOrNull()?.startAt?.let(DateTimeUtils::parse)
+                DateStripItem(
+                    day = start?.dayOfWeek
+                        ?.getDisplayName(TextStyle.SHORT, Locale.ENGLISH)
+                        .orEmpty(),
+                    date = start?.dayOfMonth?.toString().orEmpty(),
+                    freeCount = slots.count { !it.isBooked },
+                    selected = date == activeDate,
+                    onClick = {
+                        if (selectedDate != date) {
+                            selectedDate = date
+                            onClearSlot()
+                        }
+                    },
                 )
-            } else {
-                if (freeOnDate == 0) {
-                    InfoCard(
-                        title = "This day is fully booked",
-                        body = "Every time on this day already has an appointment. Choose another date above.",
-                        modifier = Modifier.padding(bottom = 10.dp),
-                    )
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    visibleSlots.chunked(2).forEach { rowSlots ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            rowSlots.forEach { slot ->
-                                TimeSlotOption(
-                                    slot = slot,
-                                    selected = !slot.isBooked &&
-                                        state.selectedSlotId == slot.slotId,
-                                    onClick = { onChooseSlot(slot.slotId) },
-                                    modifier = Modifier.weight(1f),
-                                )
-                            }
-                            if (rowSlots.size == 1) {
-                                Spacer(Modifier.weight(1f))
-                            }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = "Available times",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Spacer(Modifier.height(8.dp))
+
+        val freeOnDate = visibleSlots.count { !it.isBooked }
+        if (visibleSlots.isEmpty()) {
+            InfoCard(
+                title = "No times on this date",
+                body = "Choose another date above.",
+            )
+        } else {
+            if (freeOnDate == 0) {
+                InfoCard(
+                    title = "This day is fully booked",
+                    body = "Every time on this day already has an appointment. Choose another date above.",
+                    modifier = Modifier.padding(bottom = 10.dp),
+                )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                visibleSlots.chunked(3).forEach { rowSlots ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        rowSlots.forEach { slot ->
+                            TimeSlotChip(
+                                slot = slot,
+                                selected = !slot.isBooked &&
+                                    state.selectedSlotId == slot.slotId,
+                                onClick = { onChooseSlot(slot.slotId) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        repeat(3 - rowSlots.size) {
+                            Spacer(Modifier.weight(1f))
                         }
                     }
                 }
             }
-            Spacer(Modifier.height(18.dp))
         }
 
-        DropdownField(
+        Spacer(Modifier.height(20.dp))
+        Text(
+            text = "Session details",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Spacer(Modifier.height(10.dp))
+        SegmentedChoiceField(
             label = "Session mode",
             options = AppConstants.sessionModes.map {
                 AppConstants.sessionModeLabels[it] ?: it
@@ -527,42 +604,39 @@ private fun SlotStep(
             },
             enabled = !state.isBooking,
         )
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(12.dp))
         AppTextField(
             value = state.note,
             onValueChange = onNoteChange,
-            label = "Anything you would like the counsellor to know? (optional)",
+            label = "Anything the counsellor should know? (optional)",
             singleLine = false,
             maxLines = 4,
             error = state.noteError,
             supportingText = "Maximum 1,000 characters.",
             enabled = !state.isBooking,
         )
-        Spacer(Modifier.height(18.dp))
-        PrimaryButton(
-            text = "Confirm appointment",
-            onClick = onBook,
-            enabled = state.selectedSlotId != null,
-            loading = state.isBooking,
-        )
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(20.dp))
     }
 }
 
 @Composable
-private fun TimeSlotOption(
-    slot: AvailableSlot,
+private fun DateStripItem(
+    day: String,
+    date: String,
+    freeCount: Int,
     selected: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = if (slot.isBooked) modifier else modifier.clickable(onClick = onClick),
+        modifier = Modifier
+            .width(68.dp)
+            .heightIn(min = 72.dp)
+            .clickable(onClick = onClick),
         shape = MaterialTheme.shapes.medium,
-        color = when {
-            slot.isBooked -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-            selected -> MaterialTheme.colorScheme.primaryContainer
-            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
         },
         border = if (selected) {
             BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
@@ -570,94 +644,162 @@ private fun TimeSlotOption(
             null
         },
     ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = DateTimeUtils.formatTime(slot.startAt),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = if (slot.isBooked) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                    modifier = Modifier.weight(1f),
-                )
-                if (slot.isBooked) {
-                    Text(
-                        text = "Booked",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else if (selected) {
-                    Icon(
-                        imageVector = Icons.Outlined.CheckCircle,
-                        contentDescription = "Selected",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(17.dp),
-                    )
-                }
-            }
+        Column(
+            modifier = Modifier.padding(vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
             Text(
-                text = "to ${DateTimeUtils.formatTime(slot.endAt)}",
+                text = day,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp),
+            )
+            Text(
+                text = date,
+                style = MaterialTheme.typography.titleLarge,
+                color = if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+            )
+            Text(
+                text = if (freeCount == 0) "Full" else "$freeCount free",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
 }
 
 @Composable
-private fun SuccessStep(
-    state: BookAppointmentUiState,
-    onDone: () -> Unit,
+private fun TimeSlotChip(
+    slot: AvailableSlot,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    Surface(
+        modifier = if (slot.isBooked) modifier else modifier.clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.small,
+        color = when {
+            slot.isBooked -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+            selected -> MaterialTheme.colorScheme.primary
+            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+        },
+    ) {
+        Column(
+            modifier = Modifier
+                .heightIn(min = 52.dp)
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                text = DateTimeUtils.formatTime(slot.startAt),
+                style = MaterialTheme.typography.titleSmall,
+                color = when {
+                    selected -> MaterialTheme.colorScheme.onPrimary
+                    slot.isBooked -> MaterialTheme.colorScheme.onSurfaceVariant
+                    else -> MaterialTheme.colorScheme.onSurface
+                },
+            )
+            Text(
+                text = if (slot.isBooked) {
+                    "Booked"
+                } else {
+                    "– ${DateTimeUtils.formatTime(slot.endAt)}"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = when {
+                    selected -> MaterialTheme.colorScheme.onPrimary
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SuccessStep(state: BookAppointmentUiState) {
+    val haptic = LocalHapticFeedback.current
+    val scale = remember { Animatable(0.4f) }
+    val alpha = remember { Animatable(0f) }
+    var showSummary by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        scale.animateTo(
+            targetValue = 1f,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessLow,
+            ),
+        )
+        alpha.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+        )
+        showSummary = true
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .navigationBarsPadding()
-            .padding(24.dp),
+            .padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        Spacer(Modifier.height(28.dp))
         Surface(
             shape = CircleShape,
             color = MaterialTheme.colorScheme.primaryContainer,
-            modifier = Modifier.size(82.dp),
+            modifier = Modifier
+                .size(88.dp)
+                .graphicsLayer {
+                    scaleX = scale.value
+                    scaleY = scale.value
+                    this.alpha = alpha.value
+                },
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = Icons.Outlined.CheckCircle,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(42.dp),
+                    modifier = Modifier.size(46.dp),
                 )
             }
         }
-        Text(
-            text = "Appointment confirmed",
-            style = MaterialTheme.typography.headlineSmall,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 18.dp),
-        )
-        Text(
-            text = "Your session is booked. It will appear under Appointments, and the counsellor can still cancel it if needed.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 8.dp),
-        )
-        if (state.selectedMatch != null) {
-            Spacer(Modifier.height(16.dp))
-            InfoCard(
-                title = state.selectedMatch.counsellorName,
-                body = state.concern ?: "",
-            )
+
+        AnimatedVisibility(
+            visible = showSummary,
+            enter = fadeIn(tween(300)) +
+                slideInVertically(tween(300)) { height -> height / 5 },
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "Appointment confirmed",
+                    style = MaterialTheme.typography.headlineSmall,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 18.dp),
+                )
+                Text(
+                    text = "Your session is booked. The counsellor can still cancel it if needed.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                if (state.selectedMatch != null) {
+                    Spacer(Modifier.height(16.dp))
+                    InfoCard(
+                        title = state.selectedMatch.counsellorName,
+                        body = state.concern ?: "",
+                    )
+                }
+            }
         }
-        Spacer(Modifier.height(22.dp))
-        PrimaryButton(text = "View my appointments", onClick = onDone)
+        Spacer(Modifier.height(24.dp))
     }
 }

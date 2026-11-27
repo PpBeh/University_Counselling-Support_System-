@@ -3,6 +3,7 @@ package com.example.counselling.feature.resource.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -19,6 +21,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SnackbarHostState
@@ -51,6 +54,7 @@ import com.example.counselling.ui.components.PrimaryButton
 import com.example.counselling.ui.components.SecondaryButton
 import com.example.counselling.ui.components.SectionHeader
 import com.example.counselling.ui.components.StatusChip
+import com.example.counselling.ui.components.StickyBottomAction
 import com.example.counselling.ui.components.showAppMessage
 import com.example.counselling.ui.theme.LocalSemanticColors
 import kotlinx.coroutines.launch
@@ -117,6 +121,10 @@ private fun SelfCheckScreen(
     onBook: (String) -> Unit,
     onOpenResource: (Resource) -> Unit,
 ) {
+    BackHandler(enabled = state.started && state.result == null) {
+        onPrevious()
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             AppTopBar(
@@ -134,14 +142,47 @@ private fun SelfCheckScreen(
 
                 !state.started -> IntroContent(onStart = onStart)
 
-                else -> QuestionContent(
-                    state = state,
-                    questions = questions,
-                    options = options,
-                    onSelect = onSelect,
-                    onNext = onNext,
-                    onPrevious = onPrevious,
-                )
+                else -> {
+                    LinearProgressIndicator(
+                        progress = {
+                            (state.currentIndex + 1).toFloat() / questions.size
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                    ) {
+                        QuestionContent(
+                            state = state,
+                            questions = questions,
+                            options = options,
+                            onSelect = onSelect,
+                        )
+                    }
+                    StickyBottomAction {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SecondaryButton(
+                                text = "Back",
+                                onClick = onPrevious,
+                                modifier = Modifier.weight(1f),
+                            )
+                            PrimaryButton(
+                                text = if (state.currentIndex == questions.lastIndex) {
+                                    "See my result"
+                                } else {
+                                    "Next"
+                                },
+                                onClick = onNext,
+                                enabled = state.answers[state.currentIndex] != null,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                }
             }
         }
         AppSnackbarHost(
@@ -202,8 +243,6 @@ private fun QuestionContent(
     questions: List<com.example.counselling.feature.resource.domain.SelfCheckQuestion>,
     options: List<com.example.counselling.feature.resource.domain.SelfCheckAnswerOption>,
     onSelect: (Int) -> Unit,
-    onNext: () -> Unit,
-    onPrevious: () -> Unit,
 ) {
     val question = questions[state.currentIndex]
     Column(
@@ -216,18 +255,19 @@ private fun QuestionContent(
             text = "Question ${state.currentIndex + 1} of ${questions.size}",
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(top = 10.dp),
+            modifier = Modifier.padding(top = 14.dp),
         )
         Text(
             text = question.text,
             style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
+            modifier = Modifier.padding(top = 8.dp, bottom = 18.dp),
         )
         options.forEach { option ->
             val selected = state.answers[state.currentIndex] == option.value
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(min = 60.dp)
                     .padding(bottom = 8.dp)
                     .selectable(
                         selected = selected,
@@ -237,37 +277,34 @@ private fun QuestionContent(
                 color = if (selected) {
                     MaterialTheme.colorScheme.primaryContainer
                 } else {
-                    MaterialTheme.colorScheme.surface
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
                 },
-                tonalElevation = 1.dp,
+                border = if (selected) {
+                    androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        MaterialTheme.colorScheme.primary,
+                    )
+                } else {
+                    null
+                },
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     RadioButton(
                         selected = selected,
                         onClick = { onSelect(option.value) },
                     )
-                    Text(option.label, style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        text = option.label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(start = 4.dp),
+                    )
                 }
             }
         }
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SecondaryButton(
-                text = "Back",
-                onClick = onPrevious,
-                modifier = Modifier.weight(1f),
-            )
-            PrimaryButton(
-                text = if (state.currentIndex == questions.lastIndex) "See my result" else "Next",
-                onClick = onNext,
-                enabled = state.answers[state.currentIndex] != null,
-                modifier = Modifier.weight(1f),
-            )
-        }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(16.dp))
     }
 }
 
