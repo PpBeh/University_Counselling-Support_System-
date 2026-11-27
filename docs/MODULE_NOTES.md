@@ -339,7 +339,7 @@ Shared Supabase configuration is in tracked `supabase.properties` (publishable U
 
 ## Verification notes
 
-- **61 local JVM tests** cover the domain value objects/User factory, Appointment State/entity rules, card notices, follow-up confirmation rules, Smart Match strategy (including booked-slot exclusion), counsellor availability rules, triage grouping, resource subtypes/draft validation, self-check recommendations, and identified/anonymous enquiry/feedback validation.
+- **62 local JVM tests** cover the domain value objects/User factory, Appointment State/entity rules, card notices, follow-up confirmation rules, Smart Match strategy (including booked-slot exclusion), counsellor availability rules, triage grouping, resource subtypes/draft validation, self-check recommendations, and identified/anonymous enquiry/feedback validation.
 - Final OOP evidence: [`OOP_NOTES.md`](OOP_NOTES.md) and
   [`CLASS_DIAGRAM.md`](CLASS_DIAGRAM.md).
 - `:app:assembleDebug` and `:app:testDebugUnitTest` are green as of the final build.

@@ -158,7 +158,8 @@ private fun StudentAppointmentsScreen(
 
     val chipOptions = when (selectedTab) {
         StudentAppointmentTab.UPCOMING -> listOf("All", "Pending", "Confirmed")
-        StudentAppointmentTab.PAST -> listOf("All", "Completed", "No show")
+        StudentAppointmentTab.PAST ->
+            listOf("All", "Awaiting outcome", "Completed", "No show")
         StudentAppointmentTab.CANCELLED -> listOf("All")
     }
 
@@ -190,7 +191,12 @@ private fun StudentAppointmentsScreen(
             }.sortedByDescending { it.slotStart }
         }
         val status = selectedStatusLabel.toApiStatus()
-        if (status == null) tabRows else tabRows.filter { it.status == status }
+        when {
+            selectedStatusLabel == "Awaiting outcome" ->
+                tabRows.filter { it.isAwaitingOutcome() }
+            status == null -> tabRows
+            else -> tabRows.filter { it.status == status }
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -306,12 +312,11 @@ private fun StudentAppointmentsScreen(
                                             "${appointment.uiKey()}:${feedback?.rating}:${feedback?.comment}"
                                         },
                                     ) { appointment ->
-                                        val canChange = appointment.status in setOf(
-                                            AppointmentStatus.Pending,
-                                            AppointmentStatus.Confirmed,
-                                        )
-                                        val canReschedule = canChange &&
-                                            DateTimeUtils.canReschedule(appointment.slotStart)
+                                        val canCancel =
+                                            appointment.canBeCancelledBy(viewer)
+                                        val canReschedule =
+                                            appointment.canBeRescheduledBy(viewer)
+                                        val canChange = canCancel || canReschedule
                                         val existingFeedback = state.feedback[appointment.id]
 
                                         if (canChange) {
@@ -328,15 +333,17 @@ private fun StudentAppointmentsScreen(
                                                             },
                                                         )
                                                     }
-                                                    SwipeAction(
-                                                        label = "Cancel",
-                                                        icon = Icons.Outlined.Close,
-                                                        destructive = true,
-                                                        onClick = {
-                                                            close()
-                                                            appointmentToCancel = appointment
-                                                        },
-                                                    )
+                                                    if (canCancel) {
+                                                        SwipeAction(
+                                                            label = "Cancel",
+                                                            icon = Icons.Outlined.Close,
+                                                            destructive = true,
+                                                            onClick = {
+                                                                close()
+                                                                appointmentToCancel = appointment
+                                                            },
+                                                        )
+                                                    }
                                                 },
                                             ) {
                                                 AppointmentRow(
@@ -391,10 +398,8 @@ private fun StudentAppointmentsScreen(
     }
 
     selectedAppointment?.let { appointment ->
-        val canChange = appointment.status in setOf(
-            AppointmentStatus.Pending,
-            AppointmentStatus.Confirmed,
-        )
+        val canCancel = appointment.canBeCancelledBy(viewer)
+        val canReschedule = appointment.canBeRescheduledBy(viewer)
         val existingFeedback = state.feedback[appointment.id]
         AppointmentDetailSheet(
             appointment = appointment,
@@ -403,9 +408,7 @@ private fun StudentAppointmentsScreen(
             isBusy = state.isMutating ||
                 state.isSubmittingFeedback ||
                 state.deletingFeedbackId != null,
-            onReschedule = if (
-                canChange && DateTimeUtils.canReschedule(appointment.slotStart)
-            ) {
+            onReschedule = if (canReschedule) {
                 {
                     selectedAppointment = null
                     onReschedule(appointment.id)
@@ -413,7 +416,7 @@ private fun StudentAppointmentsScreen(
             } else {
                 null
             },
-            onCancel = if (canChange) {
+            onCancel = if (canCancel) {
                 {
                     selectedAppointment = null
                     appointmentToCancel = appointment

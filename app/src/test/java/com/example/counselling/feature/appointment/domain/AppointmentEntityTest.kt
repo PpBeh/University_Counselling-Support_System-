@@ -88,6 +88,18 @@ class AppointmentEntityTest {
     }
 
     @Test
+    fun endedActiveAppointmentWaitsForOutcomeAndCannotBeCancelled() {
+        val ended = appointment(startHoursFromNow = -2, status = AppointmentStatus.Confirmed)
+        assertTrue(ended.isAwaitingOutcome(now))
+        assertFalse(ended.canBeCancelledBy(student, now))
+        assertFalse(ended.canBeRescheduledBy(student, now))
+
+        val future = appointment(startHoursFromNow = 24, status = AppointmentStatus.Confirmed)
+        assertFalse(future.isAwaitingOutcome(now))
+        assertTrue(future.canBeCancelledBy(student, now))
+    }
+
+    @Test
     fun counsellorReschedule_isAllowedWithoutTwelveHourRuleForConfirmedOnly() {
         val confirmed = appointment(startHoursFromNow = 2, status = AppointmentStatus.Confirmed)
         val pending = appointment(startHoursFromNow = 2, status = AppointmentStatus.Pending)

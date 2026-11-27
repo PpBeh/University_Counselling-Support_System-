@@ -236,7 +236,7 @@ See [`MODULE_NOTES.md`](MODULE_NOTES.md) for the per-module behaviour summary.
 | Database OOP | supertype/subtype tables, reference tables, exactly-one-subtype triggers, views, RPCs | ✅ |
 | No role strings in decisions | `grep -R "when (role"` / `UserRole` returns no app code | ✅ |
 | Comments | 110+ `OOP:` comments in domain/data/base/ViewModel files | ✅ |
-| Tests | 61 JVM tests, 0 failures | ✅ |
+| Tests | 62 JVM tests, 0 failures | ✅ |
 
 ### Useful final commands
 
@@ -253,7 +253,7 @@ Get-ChildItem -Recurse -File app\src\main\java\com\example\counselling |
   Select-String -Pattern 'UserRole|Profile\b|feature\.appointment\.model|legacyAppointment'
 ```
 
-All three should produce no legacy output; the tests should report 61/61.
+All three should produce no legacy output; the tests should report 62/62.
 
 ---
 

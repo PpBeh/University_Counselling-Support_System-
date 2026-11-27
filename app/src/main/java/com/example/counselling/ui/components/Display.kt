@@ -326,7 +326,8 @@ fun StatusChip(
     val label = status.replace('_', ' ').replaceFirstChar { it.uppercase() }
     val semantic = LocalSemanticColors.current
     val colors = when (status) {
-        "pending" -> semantic.warningContainer to semantic.warningContent
+        "pending", "awaiting_outcome" ->
+            semantic.warningContainer to semantic.warningContent
         "confirmed" -> MaterialTheme.colorScheme.primaryContainer to
             MaterialTheme.colorScheme.onPrimaryContainer
         "completed" -> semantic.successContainer to semantic.successContent

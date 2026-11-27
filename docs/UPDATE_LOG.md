@@ -385,7 +385,7 @@ Reference enquiry codes: `ENQ-DEMO01` – `ENQ-DEMO04`.
 
 ## 8. Verification already done
 
-- **61/61 JVM tests pass**
+- **62/62 JVM tests pass**
 - Android debug build: **BUILD SUCCESSFUL**
 - All domain packages free of Android/Supabase imports
 - No remaining `UserRole`, `Profile`, or legacy repository references
@@ -527,7 +527,7 @@ no longer required for normal appointment feedback.
 ### Verification after fixes
 
 - `:app:assembleDebug` — **BUILD SUCCESSFUL**
-- `:app:testDebugUnitTest` — **61/61 tests pass**
+- `:app:testDebugUnitTest` — **62/62 tests pass**
 - No database/migration changes required
 
 ---
@@ -553,6 +553,10 @@ counsellor top bars also have an explicit refresh button.
 The student **Upcoming** tab now also requires `slotEnd` to be in the future;
 active appointments whose session has ended move to **Past** instead of
 remaining under Upcoming.
+An ended pending/confirmed session is shown as **Awaiting outcome**, has no
+Cancel or Reschedule action, and its detail sheet explains that the counsellor
+must still record the result or the student can contact the counselling office.
+The **Past** tab also has an **Awaiting outcome** filter.
 
 ### 14.2 In-app notification badge on cards
 
@@ -664,6 +668,6 @@ Changed file:
 
 ### 14.9 Tests and build
 
-- `:app:testDebugUnitTest` — **61/61 tests pass**
+- `:app:testDebugUnitTest` — **62/62 tests pass**
 - `:app:assembleDebug` — **BUILD SUCCESSFUL**
 - Updated migration: [`20261120_oop_refactor.sql`](../supabase/migrations/20261120_oop_refactor.sql)

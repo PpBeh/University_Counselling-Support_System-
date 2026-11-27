@@ -58,6 +58,14 @@ class Appointment(
     val slotStart: String get() = slot.start.toString()
     val slotEnd: String get() = slot.end.toString()
 
+    // A session whose slot has ended but is still pending/confirmed is waiting
+    // for the counsellor to record an outcome; it must not stay actionable.
+    fun hasEnded(now: Instant = Instant.now()): Boolean = !slot.end.isAfter(now)
+
+    fun isAwaitingOutcome(now: Instant = Instant.now()): Boolean =
+        status in setOf(AppointmentStatus.Pending, AppointmentStatus.Confirmed) &&
+            hasEnded(now)
+
     fun canBeRescheduledBy(actor: User, now: Instant = Instant.now()): Boolean {
         if (actor is Student) {
             return actor.id == student.id &&

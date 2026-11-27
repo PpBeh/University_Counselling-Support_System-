@@ -69,7 +69,13 @@ fun AppointmentRow(
             )
         },
         trailingContent = {
-            StatusChip(status = appointment.status.wireValue)
+            StatusChip(
+                status = if (appointment.isAwaitingOutcome()) {
+                    "awaiting_outcome"
+                } else {
+                    appointment.status.wireValue
+                },
+            )
         },
         onClick = onClick,
         showDivider = showDivider,
@@ -96,6 +102,7 @@ fun AppointmentDetailSheet(
     notice: String? = null,
 ) {
     val semantic = LocalSemanticColors.current
+    val awaitingOutcome = appointment.isAwaitingOutcome()
 
     AppBottomSheet(
         onDismissRequest = onDismiss,
@@ -116,7 +123,10 @@ fun AppointmentDetailSheet(
                 )
             }
             Spacer(Modifier.height(0.dp))
-            StatusChip(status = appointment.status.wireValue)
+            StatusChip(
+                status = if (awaitingOutcome) "awaiting_outcome"
+                else appointment.status.wireValue,
+            )
         }
 
         Text(
@@ -165,6 +175,16 @@ fun AppointmentDetailSheet(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 )
             }
+        }
+
+        if (awaitingOutcome) {
+            Text(
+                text = "This session has ended. Your counsellor still needs to record the outcome. " +
+                    "If it did not take place, contact the counselling office.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 12.dp),
+            )
         }
 
         if (appointment.isFollowUp) {

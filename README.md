@@ -191,7 +191,7 @@ docs/
 ## Verification
 
 - `:app:assembleDebug` — **BUILD SUCCESSFUL**
-- `:app:testDebugUnitTest` — **61/61 tests passed**
+- `:app:testDebugUnitTest` — **62/62 tests passed**
   - value objects, User hierarchy, UserFactory, AppointmentStatus
   - Appointment entity reschedule/cancel and follow-up confirmation rules
   - in-app card notices for confirm/reschedule/cancel/follow-up
