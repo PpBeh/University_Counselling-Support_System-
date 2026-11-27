@@ -666,7 +666,14 @@ Changed file:
   dark containers, so status text stays readable in both modes.
 - The login card shadow was removed to avoid a stray frame in dark mode.
 
-### 14.9 Tests and build
+### 14.9 Portrait-only phone UI
+
+`MainActivity` is locked to `portrait`. The manifest also sets
+`android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_ORIENTATION=true` so Android
+16+ large-screen behaviour does not ignore the restriction. The app no longer
+rotates into a landscape layout that was never designed.
+
+### 14.10 Tests and build
 
 - `:app:testDebugUnitTest` — **62/62 tests pass**
 - `:app:assembleDebug` — **BUILD SUCCESSFUL**
