@@ -11,6 +11,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.counselling.MainActivity
 import com.example.counselling.support.TestAccounts
 import com.example.counselling.support.assertTextVisible
+import com.example.counselling.support.awaitAnyText
 import com.example.counselling.support.awaitEnabled
 import com.example.counselling.support.awaitNewTextMatching
 import com.example.counselling.support.awaitText
@@ -18,14 +19,19 @@ import com.example.counselling.support.clickTab
 import com.example.counselling.support.goBack
 import com.example.counselling.support.invokeClick
 import com.example.counselling.support.pickAnyFreeTimeSlot
+import com.example.counselling.support.scrollToLabel
 import com.example.counselling.support.selectSheetOption
 import com.example.counselling.support.signIn
 import com.example.counselling.support.tap
 import com.example.counselling.support.tapAndAwait
 import com.example.counselling.support.tapBottomEndFab
+import com.example.counselling.support.tapContentDescription
 import com.example.counselling.support.tapEnquiryFab
 import com.example.counselling.support.tapLast
+import com.example.counselling.support.tapTextNear
+import com.example.counselling.support.textExists
 import com.example.counselling.support.textsMatching
+import com.example.counselling.support.turnSwitchOn
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -130,5 +136,79 @@ class StudentWriteFlowTest {
         rule.invokeClick("Change password")
         rule.awaitText("Password must be at least 8 characters.")
         rule.assertTextVisible("Passwords do not match.")
+    }
+
+    /** Saves the profile unchanged, then opens and cancels the deactivate dialog. */
+    @Test
+    fun profile_savesDetailsAndDeactivationCanBeCancelled() {
+        rule.clickTab("Profile")
+        rule.awaitText("Save profile")
+
+        rule.tapAndAwait("Save profile", "Profile updated.")
+
+        rule.tap("Deactivate account")
+        rule.awaitText("Deactivate account?")
+        rule.tapLast("Cancel")
+
+        // Still signed in and on the profile screen.
+        rule.assertTextVisible("Sign out")
+        rule.assertTextVisible("Profile")
+    }
+
+    /** Rates a completed session, then removes the rating again. */
+    @Test
+    fun feedback_canBeSubmittedAndRemoved() {
+        rule.tapAndAwait("Your feedback", "Rate a completed session")
+        rule.awaitAnyText("Remove rating", "Rate this session")
+
+        if (rule.textExists("Rate this session")) {
+            rule.tapAndAwait("Rate this session", "Rate your session")
+            rule.tapContentDescription("4 stars")
+            rule.onAllNodes(hasSetTextAction() and hasText("Comment (optional)"))[0]
+                .performTextReplacement("Automated feedback comment.")
+            androidx.test.espresso.Espresso.closeSoftKeyboard()
+            rule.tapAndAwait("Submit feedback", "Thank you for your feedback.")
+            rule.awaitText("Remove rating")
+
+            rule.tapAndAwait("Remove rating", "Remove this rating?")
+            rule.tapLast("Remove rating")
+            rule.awaitText("Feedback removed.")
+        } else {
+            // The demo already has ratings; verify the delete path without
+            // destroying the seeded feedback.
+            rule.tapAndAwait("Remove rating", "Remove this rating?")
+            rule.tapLast("Cancel")
+            rule.assertTextVisible("Remove rating")
+        }
+    }
+
+    /** Creates an anonymous enquiry, checks it by code, then withdraws it. */
+    @Test
+    fun anonymousEnquiry_canBeLookedUpByCodeAndWithdrawn() {
+        rule.clickTab("Enquiries")
+        rule.awaitText("Your enquiries")
+        val existingCodes = rule.textsMatching(Regex("""^ENQ-[A-Z0-9]{6}$"""))
+
+        rule.tapEnquiryFab()
+        rule.awaitText("New enquiry")
+        rule.tap("Concern category")
+        rule.selectSheetOption("Anxiety")
+        rule.onAllNodes(hasSetTextAction() and hasText("Your question"))[0]
+            .performTextReplacement("Anonymous automated question about anxiety.")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        rule.turnSwitchOn()
+        rule.tapAndAwait("Send question", "Question submitted")
+        val code = rule.awaitNewTextMatching(Regex("""^ENQ-[A-Z0-9]{6}$"""), existingCodes)
+        rule.tap("Done")
+
+        rule.scrollToLabel("Check a reply by code")
+        rule.onAllNodes(hasSetTextAction())[0].performTextReplacement(code)
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        rule.tapAndAwait("Check reply", "No reply yet.")
+
+        rule.tapTextNear("Withdraw", "No reply yet.")
+        rule.awaitText("Withdraw anonymous enquiry?")
+        rule.tapLast("Withdraw")
+        rule.awaitText("Enquiry withdrawn.")
     }
 }

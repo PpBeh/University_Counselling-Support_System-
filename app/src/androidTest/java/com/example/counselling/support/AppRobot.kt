@@ -250,7 +250,7 @@ fun ComposeTestRule.tapAndAwait(
     timeout: Long = NETWORK_TIMEOUT,
 ) {
     repeat(3) {
-        tap(label)
+        tap(label, substring)
         if (waitFor(timeout / 3) { textExists(expected, substring) }) return
     }
     throw AssertionError(
@@ -282,6 +282,17 @@ fun ComposeTestRule.turnSwitchOn(timeout: Long = UI_TIMEOUT) {
         settleAnimations(400)
     }
     throw AssertionError("Switch never turned on.")
+}
+
+/** Waits until an editable field carrying [label] is present. */
+fun ComposeTestRule.awaitField(label: String, timeout: Long = UI_TIMEOUT) {
+    val matcher = hasSetTextAction() and hasText(label)
+    val deadline = System.currentTimeMillis() + timeout
+    while (System.currentTimeMillis() < deadline) {
+        if (onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()) return
+        settleAnimations(250)
+    }
+    throw AssertionError("Field \"$label\" never appeared.")
 }
 
 /** A short snapshot of on-screen text, useful in failure messages. */
@@ -529,6 +540,22 @@ fun ComposeTestRule.tapContentDescriptionNear(description: String, nearText: Str
     if (candidates.isEmpty()) {
         throw AssertionError("No \"$description\" action was on screen.")
     }
+    val index = candidates.indices.minByOrNull {
+        kotlin.math.abs(candidates[it].boundsInRoot.center.y - targetY)
+    } ?: 0
+    buttons[index].performClick()
+    settleAnimations(300)
+}
+
+/** Clicks the clickable [label] text closest vertically to [nearText]. */
+fun ComposeTestRule.tapTextNear(label: String, nearText: String) {
+    scrollToLabel(nearText)
+    val anchors = onAllNodes(hasText(nearText)).fetchSemanticsNodes()
+    if (anchors.isEmpty()) throw AssertionError("\"$nearText\" was not on screen.")
+    val targetY = anchors.first().boundsInRoot.center.y
+    val buttons = onAllNodes(hasText(label) and hasClickAction())
+    val candidates = buttons.fetchSemanticsNodes()
+    if (candidates.isEmpty()) throw AssertionError("No \"$label\" button was on screen.")
     val index = candidates.indices.minByOrNull {
         kotlin.math.abs(candidates[it].boundsInRoot.center.y - targetY)
     } ?: 0

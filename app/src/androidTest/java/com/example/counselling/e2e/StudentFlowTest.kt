@@ -14,11 +14,13 @@ import com.example.counselling.support.awaitText
 import com.example.counselling.support.clickFirstClickableMatching
 import com.example.counselling.support.clickTab
 import com.example.counselling.support.goBack
+import com.example.counselling.support.invokeClick
 import com.example.counselling.support.scrollToLabel
 import com.example.counselling.support.signIn
 import com.example.counselling.support.tap
 import com.example.counselling.support.tapAndAwait
 import com.example.counselling.support.tapEnquiryFab
+import com.example.counselling.support.tapLast
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -99,6 +101,12 @@ class StudentFlowTest {
 
         rule.tap("View my appointments")
         rule.awaitText("Your sessions")
+
+        // Release the slot again so repeated runs stay under the 2-booking cap.
+        rule.invokeClick("Cancel")
+        rule.awaitText("Cancel appointment?")
+        rule.tapLast("Cancel appointment")
+        rule.awaitText("Appointment cancelled.")
     }
 
     @Test
