@@ -127,7 +127,9 @@ class AdminFlowTest {
         rule.onAllNodes(hasSetTextAction() and hasText("Resource link"))[0]
             .performTextReplacement("https://example.com/automated-test")
         androidx.test.espresso.Espresso.closeSoftKeyboard()
-        rule.tapAndAwait("Save resource", title)
+        rule.tapAndAwait("Save resource", "Resource added.")
+        rule.awaitText("Self-help library")
+        rule.awaitText(title)
 
         // Edit the title, then toggle its published state.
         val editedTitle = "$title (edited)"
@@ -138,7 +140,9 @@ class AdminFlowTest {
         rule.onAllNodes(hasSetTextAction() and hasText("Title"))[0]
             .performTextReplacement(editedTitle)
         androidx.test.espresso.Espresso.closeSoftKeyboard()
-        rule.tapAndAwait("Save resource", editedTitle)
+        rule.tapAndAwait("Save resource", "Resource updated.")
+        rule.awaitText("Self-help library")
+        rule.awaitText(editedTitle)
 
         rule.tapAndAwait(editedTitle, "Publish")
         val publishAction = if (rule.textExists("Unpublish")) "Unpublish" else "Publish"
