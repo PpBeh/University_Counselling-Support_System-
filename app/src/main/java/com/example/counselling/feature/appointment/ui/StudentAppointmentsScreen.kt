@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -32,6 +33,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -155,6 +157,12 @@ private fun StudentAppointmentsScreen(
 
     val tabs = StudentAppointmentTab.entries
     val selectedTab = tabs[selectedTabIndex]
+
+    val activeUpcomingCount = state.appointments.count {
+        it.status in setOf(AppointmentStatus.Pending, AppointmentStatus.Confirmed) &&
+            DateTimeUtils.isFuture(it.slotStart)
+    }
+    val bookingBlocked = activeUpcomingCount >= 2
 
     val chipOptions = when (selectedTab) {
         StudentAppointmentTab.UPCOMING -> listOf("All", "Pending", "Confirmed")
@@ -367,24 +375,55 @@ private fun StudentAppointmentsScreen(
             }
         }
 
-        AnimatedContent(
-            targetState = showExtendedFab,
-            label = "book-fab",
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp),
-        ) { extended ->
-            if (extended) {
-                ExtendedFloatingActionButton(
-                    onClick = onBook,
-                    icon = {
-                        Icon(Icons.Outlined.CalendarMonth, contentDescription = null)
-                    },
-                    text = { Text("Book session") },
+        if (bookingBlocked) {
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 16.dp, bottom = 92.dp)
+                    .widthIn(max = 260.dp),
+            ) {
+                Text(
+                    text = "You already have 2 upcoming sessions. Cancel one to book another.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(12.dp),
                 )
-            } else {
-                FloatingActionButton(onClick = onBook) {
-                    Icon(Icons.Outlined.CalendarMonth, contentDescription = "Book session")
+            }
+            FloatingActionButton(
+                onClick = {},
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp),
+            ) {
+                Icon(
+                    Icons.Outlined.CalendarMonth,
+                    contentDescription = "Booking unavailable - 2 upcoming sessions",
+                )
+            }
+        } else {
+            AnimatedContent(
+                targetState = showExtendedFab,
+                label = "book-fab",
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp),
+            ) { extended ->
+                if (extended) {
+                    ExtendedFloatingActionButton(
+                        onClick = onBook,
+                        icon = {
+                            Icon(Icons.Outlined.CalendarMonth, contentDescription = null)
+                        },
+                        text = { Text("Book session") },
+                    )
+                } else {
+                    FloatingActionButton(onClick = onBook) {
+                        Icon(Icons.Outlined.CalendarMonth, contentDescription = "Book session")
+                    }
                 }
             }
         }

@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -124,6 +125,16 @@ private fun CounsellorAvailabilityScreen(
 ) {
     var slotToDelete by remember { mutableStateOf<AvailabilitySlot?>(null) }
     var rangeFilter by rememberSaveable { mutableStateOf("Upcoming") }
+    val listState = rememberLazyListState()
+
+    // New slots are inserted in date order, so a slot earlier than the current
+    // first row would otherwise stay hidden above the viewport. Jump back to
+    // the top whenever the saved list changes.
+    LaunchedEffect(state.slots) {
+        if (state.slots.isNotEmpty()) {
+            listState.scrollToItem(0)
+        }
+    }
 
     val visibleSlots = when (rangeFilter) {
         "This week" -> state.slots.filter {
@@ -215,6 +226,7 @@ private fun CounsellorAvailabilityScreen(
                         }
                     } else {
                         LazyColumn(
+                            state = listState,
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(
                                 start = 20.dp,

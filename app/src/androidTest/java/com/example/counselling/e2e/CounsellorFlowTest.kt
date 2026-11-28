@@ -125,10 +125,7 @@ class CounsellorFlowTest {
         rule.tap("Archive record")
         rule.awaitText("Session record archived.")
 
-        // Re-enter the tab so the list reloads with the archive state.
-        rule.clickTab("Home")
-        rule.clickTab("Records")
-        rule.awaitText("Show archived")
+        // The list must refresh in place, without leaving the screen.
         rule.turnSwitchOn()
         if (!rule.waitFor(UI_TIMEOUT) { rule.textExists("Archived") }) {
             throw AssertionError("Archived header missing. Visible: ${rule.visibleTexts(40)}")
@@ -154,11 +151,7 @@ class CounsellorFlowTest {
         rule.tap("6:30 PM")
         rule.tapAndAwait("Save availability", "Availability added.")
 
-        // Re-enter the screen so the list reloads with the new slot (the list
-        // does not refresh in place after saving).
-        rule.goBack()
-        rule.awaitText("Today")
-        rule.tapAndAwait("My availability", "Add availability")
+        // The list must jump to the top and show the new earlier slot in place.
         rule.awaitText("29 Nov 2026")
         rule.tapContentDescriptionNear("Delete slot", "29 Nov 2026")
         rule.awaitText("Delete this free slot?")

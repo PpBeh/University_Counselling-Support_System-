@@ -23,6 +23,10 @@ data class SessionRecordsUiState(
     val records: List<SessionRecord> = emptyList(),
     val eligibleAppointments: List<Appointment> = emptyList(),
     val busyRecordId: String? = null,
+    // SessionRecord equality is id-only, so a status-only reload compares equal
+    // and Compose would skip the recomposition. Bumping this forces the screen
+    // to redraw after archive/restore.
+    val contentVersion: Long = 0,
 )
 
 // OOP: Inheritance - this ViewModel extends BaseViewModel and reuses its shared UiMessage channel.
@@ -85,6 +89,7 @@ class SessionRecordsViewModel(
                     error = null,
                     records = records,
                     eligibleAppointments = eligible,
+                    contentVersion = it.contentVersion + 1,
                 )
             }
         }

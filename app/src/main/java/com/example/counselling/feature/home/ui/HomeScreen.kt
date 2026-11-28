@@ -150,6 +150,7 @@ private fun StudentHome(
     val nextAppointment = upcomingSessions.firstOrNull()
     val laterSessions = upcomingSessions.drop(1).take(3)
     val completedCount = appointments.count { it.status == AppointmentStatus.Completed }
+    val bookingBlocked = upcomingSessions.size >= 2
 
     Column(modifier = Modifier.fillMaxWidth()) {
         when {
@@ -183,8 +184,13 @@ private fun StudentHome(
             actions = listOf(
                 HomeShortcut(
                     label = "Book",
-                    description = "Book a counselling session",
+                    description = if (bookingBlocked) {
+                        "Booking unavailable - 2 upcoming sessions"
+                    } else {
+                        "Book a counselling session"
+                    },
                     icon = Icons.Outlined.CalendarMonth,
+                    available = !bookingBlocked,
                     onClick = { onNavigate(Routes.STUDENT_APPOINTMENTS) },
                 ),
                 HomeShortcut(
@@ -208,6 +214,14 @@ private fun StudentHome(
             ),
             modifier = Modifier.padding(horizontal = 20.dp),
         )
+        if (bookingBlocked) {
+            Text(
+                text = "You already have 2 upcoming sessions. Cancel one to book another.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 6.dp),
+            )
+        }
 
         Spacer(Modifier.height(16.dp))
         UrgentHelpRow(
@@ -766,6 +780,7 @@ private class HomeShortcut(
     val label: String,
     val description: String,
     val icon: ImageVector,
+    val available: Boolean = true,
     val onClick: () -> Unit,
 )
 
@@ -789,14 +804,22 @@ private fun QuickActionRow(
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer,
+                    color = if (action.available) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    },
                     modifier = Modifier.size(56.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = action.icon,
                             contentDescription = action.description,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            tint = if (action.available) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
                             modifier = Modifier.size(24.dp),
                         )
                     }
@@ -804,7 +827,11 @@ private fun QuickActionRow(
                 Text(
                     text = action.label,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (action.available) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.outline
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 6.dp),
