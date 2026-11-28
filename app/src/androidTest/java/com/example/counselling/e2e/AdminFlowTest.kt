@@ -4,19 +4,24 @@
 package com.example.counselling.e2e
 
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.counselling.MainActivity
 import com.example.counselling.support.TestAccounts
 import com.example.counselling.support.assertTextVisible
+import com.example.counselling.support.awaitGone
 import com.example.counselling.support.awaitText
 import com.example.counselling.support.clickTab
 import com.example.counselling.support.goBack
+import com.example.counselling.support.selectSheetOption
 import com.example.counselling.support.signIn
 import com.example.counselling.support.tap
 import com.example.counselling.support.tapAndAwait
+import com.example.counselling.support.tapBottomEndFab
 import com.example.counselling.support.tapContentDescription
+import com.example.counselling.support.tapLast
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -92,5 +97,37 @@ class AdminFlowTest {
         rule.tapAndAwait("Session feedback", "Student ratings")
         rule.goBack()
         rule.awaitText("Manage")
+    }
+
+    /** Creates a draft resource, then deletes it so the library is unchanged. */
+    @Test
+    fun resource_canBeCreatedAndDeleted() {
+        val title = "Automated test resource"
+
+        rule.clickTab("Resources")
+        rule.awaitText("Search resources")
+        rule.tapBottomEndFab()
+        rule.awaitText("New resource")
+
+        rule.onAllNodes(hasSetTextAction() and hasText("Title"))[0]
+            .performTextReplacement(title)
+        rule.onAllNodes(hasSetTextAction() and hasText("Description"))[0]
+            .performTextReplacement("Created by the automated UI test to verify resource management.")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        rule.tap("Category")
+        rule.selectSheetOption("Stress")
+        rule.tap("Media type")
+        rule.selectSheetOption("Article")
+        rule.tap("Low")
+        rule.onAllNodes(hasSetTextAction() and hasText("Resource link"))[0]
+            .performTextReplacement("https://example.com/automated-test")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        rule.tapAndAwait("Save resource", title)
+
+        rule.tapAndAwait(title, "Delete")
+        rule.tap("Delete")
+        rule.awaitText("Delete this resource?")
+        rule.tapLast("Delete")
+        rule.awaitGone(title)
     }
 }

@@ -12,8 +12,12 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isEnabled
+import androidx.compose.ui.test.isOn
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.isSelected
+import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -170,6 +174,15 @@ fun ComposeTestRule.clickTab(label: String, timeout: Long = UI_TIMEOUT) {
  * inside a nested horizontal scroller are composed but unplaced while below
  * the fold, so `performScrollTo` alone cannot reach them.
  */
+private fun ComposeTestRule.swipeTopRoot(up: Boolean) {
+    val roots = onAllNodes(isRoot())
+    val last = roots.fetchSemanticsNodes().lastIndex
+    if (last < 0) return
+    roots[last].performTouchInput {
+        if (up) swipeUp(startY = 0.7f, endY = 0.2f) else swipeDown(startY = 0.3f, endY = 0.8f)
+    }
+}
+
 private fun ComposeTestRule.scrollIntoView(matcher: SemanticsMatcher, maxSwipes: Int = 8) {
     repeat(maxSwipes) {
         val nodes = onAllNodes(matcher).fetchSemanticsNodes()
@@ -179,14 +192,14 @@ private fun ComposeTestRule.scrollIntoView(matcher: SemanticsMatcher, maxSwipes:
         }
         if (placed != null) {
             if (placed.boundsInRoot.top < 0f) {
-                onRoot().performTouchInput { swipeDown(startY = 0.3f, endY = 0.8f) }
+                swipeTopRoot(up = false)
                 settleAnimations(400)
             }
             return
         }
         // Start below the top bar and finish above the bottom nav so the
         // scrollable content (not the nav bar) receives the gesture.
-        onRoot().performTouchInput { swipeUp(startY = 0.7f, endY = 0.2f) }
+        swipeTopRoot(up = true)
         settleAnimations(400)
     }
 }
@@ -196,25 +209,37 @@ private fun ComposeTestRule.scrollIntoView(matcher: SemanticsMatcher, maxSwipes:
  * it into view first when it lives inside a scrollable container.
  */
 fun ComposeTestRule.tap(label: String, substring: Boolean = false, timeout: Long = UI_TIMEOUT) {
-    settleAnimations()
+    val deadline = System.currentTimeMillis() + timeout
     val matcher = hasText(label, substring = substring)
-    // Matching content can arrive a beat after navigation (async data load).
-    waitFor(timeout) { onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty() }
-    scrollIntoView(matcher)
-    val clickable = onAllNodes(hasText(label, substring = substring) and hasClickAction())
-    if (clickable.fetchSemanticsNodes().isNotEmpty()) {
-        clickable[0].scrollIfPossible().performClick()
-        settleAnimations(250)
-        return
+    while (System.currentTimeMillis() < deadline) {
+        settleAnimations()
+        if (onAllNodes(matcher).fetchSemanticsNodes().isEmpty()) {
+            settleAnimations(250)
+            continue
+        }
+        scrollIntoView(matcher)
+        try {
+            val clickable = onAllNodes(matcher and hasClickAction())
+            if (clickable.fetchSemanticsNodes().isNotEmpty()) {
+                clickable[0].scrollIfPossible().performClick()
+                settleAnimations(250)
+                return
+            }
+            val selectable = onAllNodes(matcher and isSelectable())
+            if (selectable.fetchSemanticsNodes().isNotEmpty()) {
+                selectable[0].scrollIfPossible().performClick()
+                settleAnimations(250)
+                return
+            }
+            onAllNodes(matcher)[0].scrollIfPossible().performClick()
+            settleAnimations(250)
+            return
+        } catch (_: Throwable) {
+            // The node can be replaced by a background refresh; try again.
+            settleAnimations(300)
+        }
     }
-    val selectable = onAllNodes(hasText(label, substring = substring) and isSelectable())
-    if (selectable.fetchSemanticsNodes().isNotEmpty()) {
-        selectable[0].scrollIfPossible().performClick()
-        settleAnimations(250)
-        return
-    }
-    onAllNodes(hasText(label, substring = substring))[0].scrollIfPossible().performClick()
-    settleAnimations(250)
+    throw AssertionError("Could not tap \"$label\". Visible: ${visibleTexts(40)}")
 }
 
 /** Taps [label] and retries until [expected] appears. */
@@ -228,8 +253,48 @@ fun ComposeTestRule.tapAndAwait(
         tap(label)
         if (waitFor(timeout / 3) { textExists(expected, substring) }) return
     }
-    throw AssertionError("Tapping \"$label\" never showed \"$expected\".")
+    throw AssertionError(
+        "Tapping \"$label\" never showed \"$expected\". Visible: ${visibleTexts(60)}",
+    )
 }
+
+/** Waits until the control carrying [label] is enabled. */
+fun ComposeTestRule.awaitEnabled(label: String, timeout: Long = UI_TIMEOUT) {
+    val matcher = hasText(label) and isEnabled()
+    val deadline = System.currentTimeMillis() + timeout
+    while (System.currentTimeMillis() < deadline) {
+        if (onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()) return
+        settleAnimations(250)
+    }
+    throw AssertionError("\"$label\" never became enabled.")
+}
+
+/** Turns the first switch-like control on, verifying its state. */
+fun ComposeTestRule.turnSwitchOn(timeout: Long = UI_TIMEOUT) {
+    val on = isToggleable() and isOn()
+    val deadline = System.currentTimeMillis() + timeout
+    while (System.currentTimeMillis() < deadline) {
+        if (onAllNodes(on).fetchSemanticsNodes().isNotEmpty()) return
+        val switches = onAllNodes(isToggleable())
+        if (switches.fetchSemanticsNodes().isNotEmpty()) {
+            switches[0].performClick()
+        }
+        settleAnimations(400)
+    }
+    throw AssertionError("Switch never turned on.")
+}
+
+/** A short snapshot of on-screen text, useful in failure messages. */
+fun ComposeTestRule.visibleTexts(limit: Int = 12): List<String> =
+    onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Text))
+        .fetchSemanticsNodes()
+        .asSequence()
+        .flatMap { it.textItems().asSequence() }
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .distinct()
+        .take(limit)
+        .toList()
 
 fun ComposeTestRule.tapContentDescription(description: String) {
     settleAnimations()
@@ -255,12 +320,18 @@ fun ComposeTestRule.scrollToLabel(label: String) {
  * composed but report zero bounds because they sit far outside the viewport,
  * which synthetic touch injection cannot reach.
  */
-fun ComposeTestRule.invokeClick(label: String, substring: Boolean = false) {
-    settleAnimations()
+fun ComposeTestRule.invokeClick(label: String, substring: Boolean = false, timeout: Long = UI_TIMEOUT) {
     val matcher = hasText(label, substring = substring) and hasClickAction()
-    val nodes = onAllNodes(matcher)
-    nodes[0].performSemanticsAction(SemanticsActions.OnClick)
-    settleAnimations(500)
+    val deadline = System.currentTimeMillis() + timeout
+    while (System.currentTimeMillis() < deadline) {
+        settleAnimations(250)
+        if (onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()) {
+            onAllNodes(matcher)[0].performSemanticsAction(SemanticsActions.OnClick)
+            settleAnimations(500)
+            return
+        }
+    }
+    throw AssertionError("No clickable node labelled \"$label\".")
 }
 
 /**
@@ -310,15 +381,30 @@ fun ComposeTestRule.dismissSnackbars() {
  * accessibility bug), so it has to be located by position: it is the only
  * clickable node in the bottom-end above the navigation bar.
  */
-fun ComposeTestRule.tapEnquiryFab() {
+fun ComposeTestRule.tapEnquiryFab() = tapBottomEndFab()
+
+/**
+ * Taps the floating action button anchored bottom-end. Some FABs expose no
+ * label in the semantics tree, so this finds them by position instead.
+ */
+fun ComposeTestRule.tapBottomEndFab() {
     dismissSnackbars()
+    val labelled = (
+        hasText("New enquiry") or hasText("New resource") or
+            hasContentDescription("New enquiry") or hasContentDescription("New resource")
+        ) and hasClickAction()
+    if (waitFor(2_000) { onAllNodes(labelled).fetchSemanticsNodes().isNotEmpty() }) {
+        onAllNodes(labelled)[0].performClick()
+        settleAnimations()
+        return
+    }
     fun isFab(node: androidx.compose.ui.semantics.SemanticsNode): Boolean {
         val bounds = node.boundsInRoot
-        return bounds.left > 400f &&
-            bounds.top > 1_500f &&
+        return bounds.left > 450f &&
+            bounds.top > 1_600f &&
             bounds.top < 2_145f &&
-            bounds.width < 600f &&
-            bounds.height < 250f
+            bounds.width < 800f &&
+            bounds.height < 300f
     }
     repeat(10) {
         val fab = onAllNodes(hasClickAction())
@@ -330,27 +416,151 @@ fun ComposeTestRule.tapEnquiryFab() {
         }
         settleAnimations(400)
     }
-    throw AssertionError("Enquiry floating action button was not found.")
+    throw AssertionError("Bottom-end floating action button was not found.")
+}
+
+/** Clicks the last clickable node carrying [label], e.g. a dialog confirm button. */
+fun ComposeTestRule.tapLast(label: String) {
+    settleAnimations()
+    val nodes = onAllNodes(hasText(label) and hasClickAction())
+    val index = nodes.fetchSemanticsNodes().lastIndex
+    if (index < 0) throw AssertionError("No clickable node labelled \"$label\".")
+    nodes[index].performClick()
+    settleAnimations(300)
+}
+
+/** Selects an option row inside an open dropdown sheet. */
+fun ComposeTestRule.selectSheetOption(label: String, timeout: Long = UI_TIMEOUT) {
+    val matcher = hasText(label) and isSelectable()
+    val deadline = System.currentTimeMillis() + timeout
+    while (System.currentTimeMillis() < deadline) {
+        settleAnimations(250)
+        val options = onAllNodes(matcher)
+        if (options.fetchSemanticsNodes().isNotEmpty()) {
+            options[0].scrollIfPossible().performClick()
+            settleAnimations(400)
+            return
+        }
+    }
+    throw AssertionError("Dropdown option \"$label\" did not appear.")
+}
+
+/** Text values attached to one semantics node. */
+fun androidx.compose.ui.semantics.SemanticsNode.textItems(): List<String> =
+    (config.firstOrNull { it.key == SemanticsProperties.Text }?.value as? List<*>)
+        ?.filterIsInstance<AnnotatedString>()
+        ?.map { it.text }
+        .orEmpty()
+
+/** First text on screen that fully matches [regex]. */
+fun ComposeTestRule.firstTextMatching(regex: Regex): String? =
+    textsMatching(regex).firstOrNull()
+
+/** Every distinct text on screen that fully matches [regex]. */
+fun ComposeTestRule.textsMatching(regex: Regex): Set<String> =
+    onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Text))
+        .fetchSemanticsNodes()
+        .asSequence()
+        .flatMap { it.textItems().asSequence() }
+        .map { it.trim() }
+        .filter { regex.matches(it) }
+        .toSet()
+
+/** Waits for a text matching [regex] that was not in [excluding]. */
+fun ComposeTestRule.awaitNewTextMatching(
+    regex: Regex,
+    excluding: Set<String>,
+    timeout: Long = NETWORK_TIMEOUT,
+): String {
+    var found: String? = null
+    waitUntil(timeout) {
+        found = textsMatching(regex).firstOrNull { it !in excluding }
+        found != null
+    }
+    return found ?: throw AssertionError("No new text matched $regex.")
+}
+
+/** Time chips render as "9:00 AM"; the merged row also carries the end time. */
+private val timeChipPattern = Regex("""^\d{1,2}[:.]\d{2}\s?[APap][Mm]$""")
+
+/**
+ * Chooses a free time chip on the booking/reschedule slot step. When the
+ * default date has no free chip, it clicks the next date chip reporting
+ * "N free" and tries again. Returns the chosen start time, or null.
+ */
+fun ComposeTestRule.pickAnyFreeTimeSlot(): String? {
+    repeat(8) { attempt ->
+        val time = clickFirstClickableMatchingText(timeChipPattern)
+        if (time != null) return time
+        if (!clickDateChipWithFreeSlots(attempt)) return null
+    }
+    return null
+}
+
+private fun ComposeTestRule.clickDateChipWithFreeSlots(skip: Int): Boolean {
+    val chips = onAllNodes(hasClickAction())
+    val all = chips.fetchSemanticsNodes()
+    var seen = 0
+    all.forEachIndexed { index, node ->
+        if (node.textItems().any { it.endsWith(" free") }) {
+            if (seen == skip) {
+                chips[index].performClick()
+                settleAnimations(600)
+                return true
+            }
+            seen++
+        }
+    }
+    return false
+}
+
+/**
+ * Clicks the icon button with [description] closest vertically to the row that
+ * shows [nearText]. Used for list rows whose trailing action is a sibling node
+ * rather than part of a merged row.
+ */
+fun ComposeTestRule.tapContentDescriptionNear(description: String, nearText: String) {
+    scrollToLabel(nearText)
+    val rows = onAllNodes(hasText(nearText)).fetchSemanticsNodes()
+    if (rows.isEmpty()) throw AssertionError("\"$nearText\" was not on screen.")
+    val targetY = rows.first().boundsInRoot.center.y
+    val buttons = onAllNodes(hasContentDescription(description))
+    val candidates = buttons.fetchSemanticsNodes()
+    if (candidates.isEmpty()) {
+        throw AssertionError("No \"$description\" action was on screen.")
+    }
+    val index = candidates.indices.minByOrNull {
+        kotlin.math.abs(candidates[it].boundsInRoot.center.y - targetY)
+    } ?: 0
+    buttons[index].performClick()
+    settleAnimations(300)
 }
 
 /**
  * Clicks the first clickable node whose text matches [regex]. Used for
  * generated labels such as time-slot chips ("9:00 AM").
  */
-fun ComposeTestRule.clickFirstClickableMatching(regex: Regex): Boolean {
+fun ComposeTestRule.clickFirstClickableMatching(regex: Regex): Boolean =
+    clickFirstClickableMatchingText(regex) != null
+
+/** Same as [clickFirstClickableMatching] but returns the matched label text. */
+fun ComposeTestRule.clickFirstClickableMatchingText(regex: Regex): String? {
     settleAnimations()
     val matcher = hasClickAction()
     val nodes = onAllNodes(matcher).fetchSemanticsNodes()
+    var matched: String? = null
     val index = nodes.indexOfFirst { node ->
-        val texts = node.config
-            .firstOrNull { it.key == SemanticsProperties.Text }
-            ?.value as? List<*>
-        texts?.filterIsInstance<AnnotatedString>()
-            ?.any { regex.matches(it.text.trim()) } == true
+        val texts = node.textItems()
+        // Booked slots render "Booked" and must never be selected.
+        val text = texts.firstOrNull {
+            regex.matches(it.trim()) && texts.none { label -> label == "Booked" }
+        }
+        if (text != null) matched = text.trim()
+        text != null
     }
-    if (index < 0) return false
+    if (index < 0) return null
     onAllNodes(matcher)[index].scrollIfPossible().performClick()
-    return true
+    return matched
 }
 
 private fun SemanticsNodeInteraction.scrollIfPossible(): SemanticsNodeInteraction =

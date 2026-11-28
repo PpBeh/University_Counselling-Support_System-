@@ -2,20 +2,30 @@
 // Phase C: the counsellor journey, signed in with the seeded Daniel account.
 package com.example.counselling.e2e
 
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.counselling.MainActivity
 import com.example.counselling.support.TestAccounts
+import com.example.counselling.support.UI_TIMEOUT
 import com.example.counselling.support.assertTextVisible
 import com.example.counselling.support.awaitContentDescription
 import com.example.counselling.support.awaitGone
 import com.example.counselling.support.awaitText
+import com.example.counselling.support.clickFirstClickableMatching
 import com.example.counselling.support.clickTab
 import com.example.counselling.support.goBack
 import com.example.counselling.support.signIn
 import com.example.counselling.support.tap
 import com.example.counselling.support.tapAndAwait
 import com.example.counselling.support.tapContentDescription
+import com.example.counselling.support.tapContentDescriptionNear
+import com.example.counselling.support.tapLast
+import com.example.counselling.support.textExists
+import com.example.counselling.support.turnSwitchOn
+import com.example.counselling.support.visibleTexts
+import com.example.counselling.support.waitFor
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -91,5 +101,68 @@ class CounsellorFlowTest {
         rule.tapAndAwait("Session feedback", "Student ratings")
         rule.goBack()
         rule.awaitText("Today")
+    }
+
+    /**
+     * Creates a session record for the seeded completed session, then archives
+     * and permanently deletes it so the next run starts clean.
+     */
+    @Test
+    fun sessionRecord_canBeCreatedArchivedAndDeleted() {
+        rule.clickTab("Records")
+        rule.awaitText("Session records")
+        rule.tapAndAwait("Add", "Private notes")
+
+        val fields = rule.onAllNodes(hasSetTextAction())
+        fields[0].performTextReplacement("Private note created by the automated UI test.")
+        fields[1].performTextReplacement("Automated summary for the session record.")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        rule.tap("Medium")
+        rule.tapAndAwait("Create record", "Session record created.")
+        rule.awaitText("Active records")
+
+        rule.tapAndAwait("Michael Goh", "Archive record")
+        rule.tap("Archive record")
+        rule.awaitText("Session record archived.")
+
+        // Re-enter the tab so the list reloads with the archive state.
+        rule.clickTab("Home")
+        rule.clickTab("Records")
+        rule.awaitText("Show archived")
+        rule.turnSwitchOn()
+        if (!rule.waitFor(UI_TIMEOUT) { rule.textExists("Archived") }) {
+            throw AssertionError("Archived header missing. Visible: ${rule.visibleTexts(40)}")
+        }
+        rule.tapAndAwait("Michael Goh", "Delete forever")
+        rule.tap("Delete forever")
+        rule.awaitText("Delete archived record permanently?")
+        rule.tapLast("Delete forever")
+        rule.awaitText("Archived session record permanently deleted.")
+    }
+
+    /** Creates a free slot, then deletes it so availability stays unchanged. */
+    @Test
+    fun availability_canBeCreatedAndDeleted() {
+        rule.tapAndAwait("My availability", "Add availability")
+        rule.tapAndAwait(
+            "Add availability",
+            "Set a day, start time and duration.",
+            substring = true,
+        )
+
+        rule.clickFirstClickableMatching(Regex("""^[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2}$"""))
+        rule.tap("6:30 PM")
+        rule.tapAndAwait("Save availability", "Availability added.")
+
+        // Re-enter the screen so the list reloads with the new slot (the list
+        // does not refresh in place after saving).
+        rule.goBack()
+        rule.awaitText("Today")
+        rule.tapAndAwait("My availability", "Add availability")
+        rule.awaitText("29 Nov 2026")
+        rule.tapContentDescriptionNear("Delete slot", "29 Nov 2026")
+        rule.awaitText("Delete this free slot?")
+        rule.tapLast("Delete slot")
+        rule.awaitText("Availability slot deleted.")
     }
 }
