@@ -32,6 +32,7 @@ data class BookAppointmentUiState(
     val step: BookingStep = BookingStep.CONCERN,
     val concern: String? = null,
     val matches: List<CounsellorMatch> = emptyList(),
+    val otherCounsellors: List<CounsellorMatch> = emptyList(),
     val selectedMatch: CounsellorMatch? = null,
     val slots: List<AvailableSlot> = emptyList(),
     val selectedSlotId: String? = null,
@@ -76,6 +77,7 @@ class BookAppointmentViewModel(
                 concern = concern,
                 step = BookingStep.MATCHES,
                 matches = emptyList(),
+                otherCounsellors = emptyList(),
                 selectedMatch = null,
                 slots = emptyList(),
                 selectedSlotId = null,
@@ -131,6 +133,7 @@ class BookAppointmentViewModel(
             it.copy(
                 step = BookingStep.CONCERN,
                 matches = emptyList(),
+                otherCounsellors = emptyList(),
                 selectedMatch = null,
                 slots = emptyList(),
                 selectedSlotId = null,
@@ -194,7 +197,9 @@ class BookAppointmentViewModel(
         val concern = _uiState.value.concern ?: return
         val category = ConcernCategory.fromWire(concern) ?: return
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingMatches = true, loadError = null) }
+            _uiState.update {
+                it.copy(isLoadingMatches = true, loadError = null, otherCounsellors = emptyList())
+            }
             repository.getSmartMatches(category)
                 .onSuccess { matches ->
                     _uiState.update {
@@ -204,6 +209,30 @@ class BookAppointmentViewModel(
                             loadError = null,
                         )
                     }
+                    // Other counsellors are bookable but not specialist matches
+                    // for this concern. The same appointment data already used
+                    // by Smart Match supplies their free slots, so no new data
+                    // source or schema change is involved.
+                    val rankedIds = matches.map { it.counsellorId }.toSet()
+                    val others = repository.getAvailableSlots().getOrNull()
+                        .orEmpty()
+                        .filter { !it.isBooked && it.counsellorId !in rankedIds }
+                        .groupBy { it.counsellorId }
+                        .mapNotNull { (counsellorId, slots) ->
+                            val ordered = slots.sortedBy { it.timeSlot.start }
+                            val first = ordered.firstOrNull() ?: return@mapNotNull null
+                            CounsellorMatch(
+                                counsellorId = counsellorId,
+                                counsellorName = first.counsellorName,
+                                specialisations = first.specialisations,
+                                languages = first.languages,
+                                bio = first.bio,
+                                nextSlot = first,
+                                slots = ordered,
+                            )
+                        }
+                        .sortedBy { it.nextSlot.timeSlot.start }
+                    _uiState.update { it.copy(otherCounsellors = others) }
                 }
                 .onFailure { error ->
                     _uiState.update {

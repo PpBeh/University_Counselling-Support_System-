@@ -125,6 +125,24 @@ class StudentWriteFlowTest {
     }
 
     @Test
+    fun booking_allowsChoosingANonMatchedCounsellor() {
+        rule.clickTab("Sessions")
+        rule.awaitText("Your sessions")
+        rule.tapBottomEndFab()
+        rule.awaitText("What would you like support with?")
+
+        rule.tap("Stress")
+        rule.tapAndAwait("Continue", "Best matches", substring = true)
+
+        // Daniel does not specialise in Stress, so Smart Match lists him under
+        // Other counsellors. Choosing him must still move on to his timetable.
+        rule.awaitText("Other counsellors")
+        rule.tap("Mr. Daniel Lim")
+        rule.awaitEnabled("Continue")
+        rule.tapAndAwait("Continue", "Choose a time with Mr. Daniel Lim")
+    }
+
+    @Test
     fun profile_passwordValidation_rejectsWeakAndMismatchedPasswords() {
         rule.clickTab("Profile")
         rule.awaitText("Change password")

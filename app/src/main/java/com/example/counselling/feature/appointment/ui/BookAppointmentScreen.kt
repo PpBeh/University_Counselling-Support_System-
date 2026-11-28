@@ -183,7 +183,7 @@ fun BookAppointmentRoute(
                 }
 
                 BookingStep.MATCHES -> StickyBottomAction {
-                    val selectedMatch = state.matches.firstOrNull {
+                    val selectedMatch = (state.matches + state.otherCounsellors).firstOrNull {
                         it.counsellorId == selectedMatchId
                     }
                     PrimaryButton(
@@ -314,14 +314,43 @@ private fun MatchStep(
             state.matches.isEmpty() -> EmptyState(
                 icon = Icons.Outlined.Person,
                 title = "No counsellor matches yet",
-                message = "No counsellor lists this concern. Try another concern.",
-                actionLabel = "Change concern",
-                onAction = onChangeConcern,
+                message = if (state.otherCounsellors.isEmpty()) {
+                    "No counsellor lists this concern. Try another concern."
+                } else {
+                    "No counsellor lists this concern as a specialisation, " +
+                        "but you can still choose someone below."
+                },
+                actionLabel = if (state.otherCounsellors.isEmpty()) "Change concern" else null,
+                onAction = if (state.otherCounsellors.isEmpty()) onChangeConcern else null,
             )
 
             else -> state.matches.forEachIndexed { index, match ->
                 MatchRow(
                     rank = index + 1,
+                    match = match,
+                    selected = match.counsellorId == selectedMatchId,
+                    onClick = { onSelect(match) },
+                )
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+
+        if (state.otherCounsellors.isNotEmpty()) {
+            Spacer(Modifier.height(18.dp))
+            Text(
+                text = "Other counsellors",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = "Not a specialist in ${state.concern ?: "this concern"}, " +
+                    "but they have free times you can book.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
+            )
+            state.otherCounsellors.forEach { match ->
+                MatchRow(
+                    rank = 0,
                     match = match,
                     selected = match.counsellorId == selectedMatchId,
                     onClick = { onSelect(match) },
@@ -377,15 +406,24 @@ private fun MatchRow(
                     modifier = Modifier.size(36.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = rank.toString(),
-                            style = MaterialTheme.typography.titleSmall,
-                            color = if (rank == 1) {
-                                MaterialTheme.colorScheme.onPrimary
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            },
-                        )
+                        if (rank <= 0) {
+                            Icon(
+                                imageVector = Icons.Outlined.Person,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        } else {
+                            Text(
+                                text = rank.toString(),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = if (rank == 1) {
+                                    MaterialTheme.colorScheme.onPrimary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
+                            )
+                        }
                     }
                 }
                 Column(
