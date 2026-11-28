@@ -29,6 +29,7 @@ import com.example.counselling.support.tapLast
 import com.example.counselling.support.tapTextNear
 import com.example.counselling.support.textExists
 import com.example.counselling.support.textsMatching
+import com.example.counselling.support.turnSwitchOn
 import com.example.counselling.support.visibleTexts
 import com.example.counselling.support.waitFor
 import org.junit.Rule
@@ -134,5 +135,67 @@ class CrossRoleFlowTest {
         if (!dialog) throw AssertionError("No withdraw dialog. Visible: ${rule.visibleTexts(40)}")
         rule.tapLast("Withdraw")
         rule.awaitText("Enquiry withdrawn.")
+    }
+
+    /**
+     * Daniel writes a session record, proposes a follow-up on a free slot, the
+     * student confirms it, then cancels it. The record is archived and deleted
+     * afterwards so the demo data is unchanged.
+     */
+    @Test
+    fun followUp_isProposedByCounsellorAndConfirmedByStudent() {
+        rule.signIn(TestAccounts.COUNSELLOR_EMAIL, TestAccounts.PASSWORD)
+        rule.clickTab("Records")
+        rule.awaitText("Session records")
+        rule.tapAndAwait("Add", "Private notes")
+
+        val fields = rule.onAllNodes(hasSetTextAction())
+        fields[0].performTextReplacement("Follow-up test private note for the session.")
+        fields[1].performTextReplacement("Follow-up test public summary.")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        rule.tap("Low")
+        rule.tapAndAwait("Create record", "Session record created.")
+        rule.awaitText("Active records")
+
+        rule.tapAndAwait("Michael Goh", "Schedule follow-up")
+        rule.tap("Schedule follow-up")
+        rule.awaitText("Choose one of your free slots")
+        val slot = rule.pickAnyFreeTimeSlot()
+        if (slot == null) {
+            rule.assertTextVisible("No free slots available")
+            return
+        }
+        rule.awaitEnabled("Send follow-up request")
+        rule.tapAndAwait("Send follow-up request", "Follow-up proposed")
+        rule.tap("Back to records")
+
+        rule.signIn(TestAccounts.STUDENT_EMAIL, TestAccounts.PASSWORD)
+        rule.clickTab("Sessions")
+        rule.awaitText("Your sessions")
+        rule.tapAndAwait("Follow-up", "Confirm your follow-up", substring = true)
+        rule.tap("Confirm session")
+        rule.awaitText("Follow-up confirmed.")
+
+        rule.invokeClick("Cancel")
+        rule.awaitText("Cancel appointment?")
+        rule.tapLast("Cancel appointment")
+        rule.awaitText("Appointment cancelled.")
+
+        // Remove the session record so the next run starts from "Ready for notes".
+        rule.signIn(TestAccounts.COUNSELLOR_EMAIL, TestAccounts.PASSWORD)
+        rule.clickTab("Records")
+        rule.awaitText("Session records")
+        rule.tapAndAwait("Michael Goh", "Archive record")
+        rule.tap("Archive record")
+        rule.awaitText("Session record archived.")
+        rule.clickTab("Home")
+        rule.clickTab("Records")
+        rule.awaitText("Show archived")
+        rule.turnSwitchOn()
+        rule.tapAndAwait("Michael Goh", "Delete forever")
+        rule.tap("Delete forever")
+        rule.awaitText("Delete archived record permanently?")
+        rule.tapLast("Delete forever")
+        rule.awaitText("Archived session record permanently deleted.")
     }
 }

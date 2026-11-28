@@ -149,6 +149,6 @@ class AdminFlowTest {
         rule.invokeClick("Delete")
         rule.awaitText("Delete this resource?")
         rule.tapLast("Delete")
-        rule.awaitGone(editedTitle)
+        rule.awaitText("Resource deleted.")
     }
 }

@@ -91,7 +91,9 @@ fun ComposeTestRule.signedOut(): Boolean =
  * emulator, where a click during a slide-in often lands off-target.
  */
 fun ComposeTestRule.settleAnimations(millis: Long = 500) {
-    mainClock.advanceTimeBy(millis)
+    // Advance on the UI thread so navigation/recomposition never runs on the
+    // instrumentation thread (Navigation enforces main-thread lifecycle calls).
+    runOnUiThread { mainClock.advanceTimeBy(millis) }
 }
 
 /** Polls [condition], advancing the Compose clock, and reports success. */
